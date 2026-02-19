@@ -1,0 +1,524 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #f5f5f5;
+}
+
+/* ============ AUTH PAGES ============ */
+.auth-layout {
+    display: flex;
+    height: 100vh;
+}
+
+.auth-left {
+    flex: 0 0 42%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: #ffffff;
+}
+
+.auth-logo {
+    max-width: 320px;
+    width: 85%;
+    height: auto;
+    display: block;
+}
+
+.auth-right {
+    flex: 1;
+    background: #e8e8e8;
+    padding: 60px 80px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-width: 0;
+}
+
+.auth-title {
+    color: #336699;
+    font-size: 32px;
+    font-weight: 700;
+    margin: 0 0 32px 0;
+    text-align: center;
+}
+
+.auth-form {
+    width: 100%;
+    max-width: 380px;
+}
+
+.auth-form label {
+    display: block;
+    color: #000000;
+    font-size: 14px;
+    font-weight: 500;
+    margin-bottom: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+}
+
+.auth-form input {
+    width: 100%;
+    padding: 14px 16px;
+    border-radius: 12px;
+    border: 1px solid #999;
+    margin-bottom: 20px;
+    font-size: 16px;
+    background: #ffffff;
+}
+
+.auth-form .input-wrap {
+    margin-bottom: 8px;
+}
+
+.forgot-link {
+    display: block;
+    text-align: right;
+    font-size: 13px;
+    color: #000000;
+    text-decoration: none;
+    margin-bottom: 20px;
+}
+
+.auth-btn {
+    width: 100%;
+    padding: 14px 24px;
+    border-radius: 25px;
+    border: none;
+    background: #9ccc65;
+    color: #ffffff;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 8px;
+}
+
+.auth-btn:hover {
+    background: #8bc34a;
+}
+
+.auth-switch {
+    text-align: center;
+    margin-top: 24px;
+    font-size: 14px;
+    color: #333;
+}
+
+.auth-switch a {
+    color: #336699;
+    text-decoration: none;
+}
+
+/* ============ NAVBAR ============ */
+nav {
+    background: #2f6db2;
+    color: white;
+    display: flex;
+    align-items: center;
+    padding: 12px 40px;
+    gap: 16px;
+}
+
+.nav-logo {
+    height: 92px;
+    width: auto;
+    margin-right: 24px;
+}
+
+.nav-left {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.nav-link {
+    margin-left: 20px;
+    color: white;
+    text-decoration: none;
+    font-size: 16px;
+    transition: color 0.2s;
+}
+
+.nav-link.active {
+    color: #9ccc65;
+    font-weight: 600;
+}
+
+.nav-right {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-shrink: 0;
+}
+
+.nav-icon {
+    display: inline-block;
+    cursor: pointer;
+}
+
+.icon-bell {
+    width: 24px;
+    height: 24px;
+    color: #fff;
+}
+
+.icon-profile {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+}
+
+/* Search bar */
+.nav-center {
+    flex: 1;
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    min-width: 0;
+    padding-right: 24px;
+}
+
+.search-wrap {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+}
+
+#nav-search {
+    padding: 10px 40px 10px 16px;
+    border-radius: 20px;
+    border: none;
+    width: 260px;
+    background: #e0e0e0;
+    font-size: 14px;
+}
+
+.search-icon {
+    position: absolute;
+    right: 28px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #666;
+    pointer-events: none;
+}
+
+.green-bar {
+    height: 15px;
+    background: #8fbf4a;
+}
+
+/* ============ DASHBOARD ============ */
+.dashboard-container {
+    padding: 30px;
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+/* Stats Cards - Their design */
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 20px;
+    margin-bottom: 30px;
+}
+
+.stat-card {
+    background: #eef7d6;
+    border-radius: 20px;
+    border: 2px solid #7bb2f5;
+    padding: 20px;
+    text-align: center;
+}
+
+.stat-card h3 {
+    color: #2f6db2;
+    font-size: 14px;
+    margin-bottom: 10px;
+}
+
+.stat-card p {
+    color: #2f6db2;
+    font-size: 24px;
+    font-weight: 600;
+}
+
+/* Trust Levels */
+.trust-levels {
+    background: #eef7d6;
+    border-radius: 20px;
+    border: 2px solid #7bb2f5;
+    padding: 20px;
+    margin-bottom: 30px;
+}
+
+.trust-levels h3 {
+    color: #2f6db2;
+    margin-bottom: 15px;
+}
+
+.trust-bars {
+    display: flex;
+    gap: 20px;
+}
+
+.trust-item {
+    flex: 1;
+    text-align: center;
+}
+
+.trust-label {
+    display: block;
+    padding: 8px;
+    border-radius: 10px;
+    font-weight: 600;
+    margin-bottom: 5px;
+}
+
+.trust-label.high { 
+    background: #63c132; 
+    color: white; 
+}
+.trust-label.medium { 
+    background: gold; 
+    color: black; 
+}
+.trust-label.low { 
+    background: #b22222; 
+    color: white; 
+}
+
+/* Sections */
+.section {
+    background: #f4fbe9;
+    border-radius: 20px;
+    border: 2px solid #7bb2f5;
+    border-left: 5px solid #8fbf4a;
+    padding: 20px;
+    margin-bottom: 30px;
+}
+
+.section h3 {
+    color: #2f6db2;
+    margin-bottom: 20px;
+}
+
+/* Forms */
+.form-inline {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.form-inline input {
+    flex: 1;
+    min-width: 150px;
+    padding: 10px;
+    border-radius: 12px;
+    border: 1px solid #999;
+    font-size: 14px;
+}
+
+.btn-primary {
+    padding: 10px 20px;
+    background: #9ccc65;
+    color: white;
+    border: none;
+    border-radius: 25px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.btn-primary:hover {
+    background: #8bc34a;
+}
+
+/* Tables */
+.table-container {
+    overflow-x: auto;
+    background: #eef7d6;
+    border-radius: 20px;
+    padding: 20px;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+th {
+    color: #2f6db2;
+    text-align: left;
+    padding: 12px;
+    font-weight: 600;
+}
+
+td {
+    padding: 12px;
+    border-bottom: 1px solid #7bb2f5;
+}
+
+/* Status/Trust Badges */
+.trust-badge {
+    padding: 5px 15px;
+    border-radius: 10px;
+    font-weight: 500;
+    display: inline-block;
+}
+
+.trust-badge.high { 
+    background: #63c132; 
+    color: white; 
+}
+.trust-badge.medium { 
+    background: gold; 
+    color: black; 
+}
+.trust-badge.low { 
+    background: #b22222; 
+    color: white; 
+}
+.trust-badge.pending {
+    background: gold;
+    color: black;
+}
+.trust-badge.success {
+    background: #63c132;
+    color: white;
+}
+.trust-badge.danger {
+    background: #b22222;
+    color: white;
+}
+
+/* Debtor Cards (their design) */
+.debtor-card {
+    background: #eef7d6;
+    border-radius: 20px;
+    border: 2px solid #7bb2f5;
+    padding: 20px;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+}
+
+.avatar {
+    width: 70px;
+    height: 70px;
+    border-radius: 50%;
+    border: 3px solid #7bb2f5;
+    margin-right: 20px;
+}
+
+.info {
+    flex: 2;
+}
+
+.info h3 {
+    color: #2f6db2;
+    margin: 0 0 4px 0;
+}
+
+.info p {
+    color: #2f6db2;
+    margin: 0 0 4px 0;
+}
+
+.debt {
+    flex: 1;
+}
+
+.debt p {
+    color: #2f6db2;
+}
+
+.debt h3 {
+    color: #2f6db2;
+}
+
+.actions {
+    flex: 1;
+    text-align: right;
+}
+
+.actions a {
+    margin-left: 12px;
+    color: #9ccc65;
+    text-decoration: none;
+    font-weight: 500;
+    cursor: pointer;
+}
+
+/* Action Buttons */
+.btn-edit, .btn-delete, .btn-pay {
+    padding: 5px 15px;
+    border-radius: 10px;
+    border: none;
+    font-weight: 500;
+    cursor: pointer;
+    margin: 0 5px;
+}
+
+.btn-edit {
+    background: #7bb2f5;
+    color: white;
+}
+
+.btn-delete {
+    background: #b22222;
+    color: white;
+}
+
+.btn-pay {
+    background: #63c132;
+    color: white;
+}
+
+/* Modal */
+.modal {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0,0,0,0.5);
+}
+
+.modal-content {
+    background: #f4fbe9;
+    margin: 10% auto;
+    padding: 30px;
+    border-radius: 20px;
+    border: 2px solid #7bb2f5;
+    width: 90%;
+    max-width: 500px;
+    position: relative;
+}
+
+.close {
+    position: absolute;
+    right: 20px;
+    top: 10px;
+    font-size: 28px;
+    color: #2f6db2;
+    cursor: pointer;
+}
+
+/* Utilities */
+.hidden {
+    display: none !important;
+}
+
+.error-message {
+    color: #b22222;
+    text-align: center;
+    margin-top: 10px;
+}

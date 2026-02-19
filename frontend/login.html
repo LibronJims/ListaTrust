@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ListaTrust - Login</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="style.css">
+    <style>
+        .password-wrapper {
+            position: relative;
+            width: 100%;
+        }
+        .password-wrapper input {
+            width: 100%;
+            padding-right: 40px;
+        }
+        .password-wrapper i {
+            position: absolute;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            cursor: pointer;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="auth-layout">
+        <div class="auth-left">
+            <img src="assets/logo.png" alt="ListaTrust" class="auth-logo">
+        </div>
+
+        <!-- LOGIN -->
+        <div id="auth-login" class="auth-right">
+            <h2 class="auth-title">Welcome</h2>
+            <form class="auth-form" id="loginForm">
+                <label>EMAIL</label>
+                <input type="email" id="email" placeholder="Email" required>
+                
+                <label>PASSWORD</label>
+                <div class="password-wrapper">
+                    <input type="password" id="password" placeholder="Password" required>
+                    <i class="fa-regular fa-eye" id="togglePassword" onclick="togglePassword('password', this)"></i>
+                </div>
+                
+                <div class="input-wrap">
+                    <a href="#" class="forgot-link" onclick="document.getElementById('auth-reset').classList.remove('hidden'); document.getElementById('auth-login').classList.add('hidden'); return false;">Forgot your password?</a>
+                </div>
+                <button type="submit" class="auth-btn">Login</button>
+            </form>
+            <p class="auth-switch">Don't have an account? <a href="signup.html">Signup</a></p>
+            <div id="errorMsg" class="error-message"></div>
+        </div>
+
+        <!-- OTP FORM -->
+        <div id="auth-otp" class="auth-right hidden">
+            <h2 class="auth-title">Enter OTP</h2>
+            <form class="auth-form" id="otpForm">
+                <label>6-DIGIT CODE</label>
+                <input type="text" id="otp" maxlength="6" placeholder="123456" required>
+                <button type="submit" class="auth-btn">Verify</button>
+            </form>
+            <p class="auth-switch"><a href="#" onclick="document.getElementById('auth-otp').classList.add('hidden'); document.getElementById('auth-login').classList.remove('hidden'); return false;">Back to Login</a></p>
+        </div>
+
+        <!-- RESET PASSWORD -->
+        <div id="auth-reset" class="auth-right hidden">
+            <h2 class="auth-title">Reset Password</h2>
+            <form class="auth-form" id="resetForm">
+                <label>Email</label>
+                <input type="email" id="resetEmail" placeholder="Email" required>
+                
+                <label>NEW PASSWORD</label>
+                <div class="password-wrapper">
+                    <input type="password" id="resetNewPassword" placeholder="New password" required>
+                    <i class="fa-regular fa-eye" onclick="togglePassword('resetNewPassword', this)"></i>
+                </div>
+                
+                <label>CONFIRM PASSWORD</label>
+                <div class="password-wrapper">
+                    <input type="password" id="resetConfirmPassword" placeholder="Confirm password" required>
+                    <i class="fa-regular fa-eye" onclick="togglePassword('resetConfirmPassword', this)"></i>
+                </div>
+                
+                <button type="submit" class="auth-btn">Reset Password</button>
+            </form>
+            <p class="auth-switch"><a href="#" onclick="document.getElementById('auth-reset').classList.add('hidden'); document.getElementById('auth-login').classList.remove('hidden'); return false;">Back to Login</a></p>
+        </div>
+    </div>
+
+    <script>
+        function togglePassword(inputId, icon) {
+            const input = document.getElementById(inputId);
+            if (input.type === 'password') {
+                input.type = 'text';
+                icon.classList.remove('fa-eye');
+                icon.classList.add('fa-eye-slash');
+            } else {
+                input.type = 'password';
+                icon.classList.remove('fa-eye-slash');
+                icon.classList.add('fa-eye');
+            }
+        }
+
+        let userEmail = null;
+
+        // Login form
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+
+            try {
+                const res = await fetch('http://127.0.0.1:3000/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+
+                const data = await res.json();
+
+                if (res.ok) {
+                    userEmail = email;
+                    document.getElementById('auth-login').classList.add('hidden');
+                    document.getElementById('auth-otp').classList.remove('hidden');
+                    document.getElementById('errorMsg').textContent = '';
+                } else {
+                    document.getElementById('errorMsg').textContent = data.error;
+                }
+            } catch (error) {
+                document.getElementById('errorMsg').textContent = 'Server error';
+            }
+        });
+
+        // OTP verification
+        document.getElementById('otpForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const otp = document.getElementById('otp').value;
+
+            try {
+                const res = await fetch('http://127.0.0.1:3000/api/auth/login/verify', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email: userEmail, otp })
+                });
+
+                const data = await res.json();
+
+                if (res.ok) {
+                    localStorage.setItem('token', data.token);
+                    localStorage.setItem('user', JSON.stringify(data.user));
+                    
+                    if (data.user.role === 'admin' || data.user.role === 'super_admin') {
+                        window.location.href = 'admin.html';
+                    } else {
+                        window.location.href = 'dashboard.html';
+                    }
+                } else {
+                    document.getElementById('errorMsg').textContent = data.error;
+                }
+            } catch (error) {
+                document.getElementById('errorMsg').textContent = 'Server error';
+            }
+        });
+
+        // Reset password
+        document.getElementById('resetForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const email = document.getElementById('resetEmail').value;
+            const newPassword = document.getElementById('resetNewPassword').value;
+            const confirmPassword = document.getElementById('resetConfirmPassword').value;
+
+            if (newPassword !== confirmPassword) {
+                document.getElementById('errorMsg').textContent = 'Passwords do not match';
+                return;
+            }
+
+            try {
+                const res = await fetch('http://127.0.0.1:3000/api/auth/forgot-password', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email })
+                });
+
+                if (res.ok) {
+                    alert('OTP sent to your email. Check console for code.');
+                }
+            } catch (error) {
+                document.getElementById('errorMsg').textContent = 'Server error';
+            }
+        });
+    </script>
+</body>
+</html>

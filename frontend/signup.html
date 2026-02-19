@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ListaTrust - Sign Up</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="style.css">
+    <style>
+        .password-wrapper {
+            position: relative;
+            width: 100%;
+        }
+        .password-wrapper input {
+            width: 100%;
+            padding-right: 40px;
+        }
+        .password-wrapper i {
+            position: absolute;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            cursor: pointer;
+            color: #666;
+        }
+        .form-row {
+            display: flex;
+            gap: 10px;
+        }
+        .form-row .form-group {
+            flex: 1;
+        }
+    </style>
+</head>
+<body>
+    <div class="auth-layout">
+        <div class="auth-left">
+            <img src="assets/logo.png" alt="ListaTrust" class="auth-logo">
+        </div>
+
+        <!-- SIGNUP -->
+        <div id="auth-signup" class="auth-right">
+            <h2 class="auth-title">Signup</h2>
+            <form class="auth-form" id="registerForm">
+                <label>Username</label>
+                <input type="text" id="username" placeholder="Username" required>
+                
+                <label>Email</label>
+                <input type="email" id="email" placeholder="Email" required>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>First Name</label>
+                        <input type="text" id="firstName" placeholder="First name">
+                    </div>
+                    <div class="form-group">
+                        <label>Last Name</label>
+                        <input type="text" id="lastName" placeholder="Last name">
+                    </div>
+                </div>
+                
+                <label>Phone (optional)</label>
+                <input type="text" id="phone" placeholder="Phone number">
+                
+                <label>PASSWORD</label>
+                <div class="password-wrapper">
+                    <input type="password" id="password" placeholder="Password" required>
+                    <i class="fa-regular fa-eye" onclick="togglePassword('password', this)"></i>
+                </div>
+                
+                <label>CONFIRM PASSWORD</label>
+                <div class="password-wrapper">
+                    <input type="password" id="confirmPassword" placeholder="Confirm password" required>
+                    <i class="fa-regular fa-eye" onclick="togglePassword('confirmPassword', this)"></i>
+                </div>
+                
+                <button type="submit" class="auth-btn">Signup</button>
+            </form>
+            <p class="auth-switch">Already have an account? <a href="login.html">Login</a></p>
+            <div id="errorMsg" class="error-message"></div>
+        </div>
+
+        <!-- OTP FORM -->
+        <div id="auth-otp" class="auth-right hidden">
+            <h2 class="auth-title">Verify Email</h2>
+            <form class="auth-form" id="otpForm">
+                <label>Enter 6-digit OTP sent to your email</label>
+                <input type="text" id="otp" maxlength="6" placeholder="123456" required>
+                <button type="submit" class="auth-btn">Verify & Complete</button>
+            </form>
+            <p class="auth-switch"><a href="#" onclick="document.getElementById('auth-otp').classList.add('hidden'); document.getElementById('auth-signup').classList.remove('hidden'); return false;">Back to Signup</a></p>
+        </div>
+    </div>
+
+    <script>
+        function togglePassword(inputId, icon) {
+            const input = document.getElementById(inputId);
+            if (input.type === 'password') {
+                input.type = 'text';
+                icon.classList.remove('fa-eye');
+                icon.classList.add('fa-eye-slash');
+            } else {
+                input.type = 'password';
+                icon.classList.remove('fa-eye-slash');
+                icon.classList.add('fa-eye');
+            }
+        }
+
+        let registrationData = {};
+
+        document.getElementById('registerForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const password = document.getElementById('password').value;
+            const confirm = document.getElementById('confirmPassword').value;
+
+            if (password !== confirm) {
+                document.getElementById('errorMsg').textContent = 'Passwords do not match';
+                return;
+            }
+
+            registrationData = {
+                username: document.getElementById('username').value,
+                email: document.getElementById('email').value,
+                firstName: document.getElementById('firstName').value,
+                lastName: document.getElementById('lastName').value,
+                phone: document.getElementById('phone').value,
+                password: password
+            };
+
+            try {
+                const res = await fetch('http://127.0.0.1:3000/api/auth/register/send-otp', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        email: registrationData.email, 
+                        username: registrationData.username,
+                        password: registrationData.password,
+                        firstName: registrationData.firstName,
+                        lastName: registrationData.lastName,
+                        phone: registrationData.phone || ''
+                    })
+                });
+
+                const data = await res.json();
+
+                if (res.ok) {
+                    document.getElementById('auth-signup').classList.add('hidden');
+                    document.getElementById('auth-otp').classList.remove('hidden');
+                    document.getElementById('errorMsg').textContent = '';
+                } else {
+                    document.getElementById('errorMsg').textContent = data.error;
+                }
+            } catch (error) {
+                document.getElementById('errorMsg').textContent = 'Server error';
+            }
+        });
+
+        document.getElementById('otpForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const otp = document.getElementById('otp').value;
+
+            try {
+                const res = await fetch('http://127.0.0.1:3000/api/auth/register/verify', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        email: registrationData.email,
+                        username: registrationData.username,
+                        password: registrationData.password,
+                        firstName: registrationData.firstName || '',
+                        lastName: registrationData.lastName || '',
+                        phone: registrationData.phone || null,
+                        otp: otp
+                    })
+                });
+
+                const data = await res.json();
+
+                if (res.ok) {
+                    alert('Registration successful! Please login.');
+                    window.location.href = 'login.html';
+                } else {
+                    document.getElementById('errorMsg').textContent = data.error;
+                }
+            } catch (error) {
+                document.getElementById('errorMsg').textContent = 'Server error';
+            }
+        });
+    </script>
+</body>
+</html>
