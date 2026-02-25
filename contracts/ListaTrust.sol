@@ -4,7 +4,8 @@ pragma solidity ^0.8.0;
 contract ListaTrust {
     struct Utang {
         uint id;
-        address customer;
+        address storeOwner;      // Who owns this debt record (the store owner)
+        string debtorName;        // Name of person who owes (e.g., "Aling Nena")
         uint amount;
         string items;
         bool paid;
@@ -13,34 +14,36 @@ contract ListaTrust {
     
     Utang[] public utangList;
     address public owner;
-    address public pendingOwner; // VULN #6 FIX
+    address public pendingOwner;
     
-    // Security: Track active utang to prevent ID confusion
-    mapping(uint => bool) public activeUtang;
+    // Track active utang per store owner
+    mapping(address => mapping(uint => bool)) public activeUtang;
     
-    // VULN #4 FIX: Customer debt limits
-    mapping(address => uint) public customerDebtLimit;
+    // Store owner debt limits (total allowed per store owner)
+    mapping(address => uint) public storeOwnerDebtLimit;
     
-    // VULN #5 FIX: Track pending deletions
+    // Track pending deletions
     mapping(uint => bool) public pendingDelete;
     
     // Events
-    event NewUtang(uint id, address customer, uint amount, string items);
+    event NewUtang(uint id, address indexed storeOwner, string debtorName, uint amount, string items);
     event UtangPaid(uint id);
     event UtangDeleted(uint id);
     event UtangEdited(uint id, uint newAmount, string newItems);
-    
-    // VULN #6 FIX: Ownership transfer events
     event OwnershipTransferRequested(address indexed currentOwner, address indexed newOwner);
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
-    
-    // VULN #5 FIX: Delete confirmation events
     event DeleteRequested(uint indexed id, uint timestamp);
     event DeleteConfirmed(uint indexed id, uint timestamp);
     event DeleteCancelled(uint indexed id, uint timestamp);
     
     modifier onlyOwner() {
-        require(msg.sender == owner, "Only store owner authorized");
+        require(msg.sender == owner, "Only contract owner authorized");
+        _;
+    }
+    
+    modifier onlyStoreOwner() {
+        // In a real app, you'd have store owner validation
+        // For now, any address can add debts
         _;
     }
     
@@ -48,80 +51,78 @@ contract ListaTrust {
         owner = msg.sender;
     }
     
-    // VULN #4 FIX: Set customer debt limit
-    function setCustomerDebtLimit(address _customer, uint _limit) public onlyOwner {
-        require(_customer != address(0), "Invalid customer address");
-        customerDebtLimit[_customer] = _limit;
+    // Set store owner debt limit
+    function setStoreOwnerDebtLimit(address _storeOwner, uint _limit) public onlyOwner {
+        require(_storeOwner != address(0), "Invalid store owner address");
+        storeOwnerDebtLimit[_storeOwner] = _limit;
     }
     
-    // 1. Record utang - Owner only (with VULN #2 and #4 FIXES)
-    function addUtang(address _customer, uint _amount, string memory _items) public onlyOwner {
-        // VULN #2 FIX: Input validation
-        require(_customer != address(0), "Customer address cannot be zero");
+    // 1. Record utang - Store owner adds debt for a debtor
+    function addUtang(string memory _debtorName, uint _amount, string memory _items) public {
+        require(bytes(_debtorName).length > 0, "Debtor name cannot be empty");
         require(_amount > 0, "Amount must be greater than zero");
         require(_amount <= 10000, "Amount exceeds maximum limit");
         require(bytes(_items).length > 0, "Items description cannot be empty");
         
-        // VULN #4 FIX: Check debt limit
-        uint currentDebt = getTotalUnpaid(_customer);
-        uint limit = customerDebtLimit[_customer];
-        if (limit == 0) limit = 5000; // Default limit
-        require(currentDebt + _amount <= limit, "Exceeds customer debt limit");
+        // Check store owner's total debt limit
+        uint currentDebt = getTotalUnpaid(msg.sender);
+        uint limit = storeOwnerDebtLimit[msg.sender];
+        if (limit == 0) limit = 50000; // Default limit per store owner
+        require(currentDebt + _amount <= limit, "Exceeds store owner debt limit");
         
         uint newId = utangList.length;
-        utangList.push(Utang(newId, _customer, _amount, _items, false, block.timestamp));
-        activeUtang[newId] = true;
-        emit NewUtang(newId, _customer, _amount, _items);
+        utangList.push(Utang(newId, msg.sender, _debtorName, _amount, _items, false, block.timestamp));
+        activeUtang[msg.sender][newId] = true;
+        emit NewUtang(newId, msg.sender, _debtorName, _amount, _items);
     }
     
-    // 2. Mark as paid - Owner only (with VULN #1 FIX)
-    function markAsPaid(uint _id) public onlyOwner {
-        // VULN #1 FIX: Array bounds check
+    // 2. Mark as paid
+    function markAsPaid(uint _id) public {
         require(_id < utangList.length, "Utang ID does not exist");
-        require(activeUtang[_id], "Utang is not active");
+        require(utangList[_id].storeOwner == msg.sender, "Not your debt record");
+        require(activeUtang[msg.sender][_id], "Utang is not active");
         require(!utangList[_id].paid, "Already paid");
         
         utangList[_id].paid = true;
         emit UtangPaid(_id);
     }
     
-    // 3. Delete utang - REPLACED with VULN #5 FIX (two-step delete)
-    function requestDeleteUtang(uint _id) public onlyOwner {
-        // VULN #1 FIX: Array bounds check
+    // 3. Two-step delete
+    function requestDeleteUtang(uint _id) public {
         require(_id < utangList.length, "Utang ID does not exist");
-        require(activeUtang[_id], "Utang does not exist");
+        require(utangList[_id].storeOwner == msg.sender, "Not your debt record");
+        require(activeUtang[msg.sender][_id], "Utang does not exist");
         require(!pendingDelete[_id], "Delete already requested");
         
         pendingDelete[_id] = true;
         emit DeleteRequested(_id, block.timestamp);
     }
     
-    function confirmDeleteUtang(uint _id) public onlyOwner {
-        // VULN #1 FIX: Array bounds check
+    function confirmDeleteUtang(uint _id) public {
         require(_id < utangList.length, "Utang ID does not exist");
-        require(activeUtang[_id], "Utang does not exist");
+        require(utangList[_id].storeOwner == msg.sender, "Not your debt record");
+        require(activeUtang[msg.sender][_id], "Utang does not exist");
         require(pendingDelete[_id], "No delete request found");
         
-        activeUtang[_id] = false;
+        activeUtang[msg.sender][_id] = false;
         delete pendingDelete[_id];
         emit DeleteConfirmed(_id, block.timestamp);
         emit UtangDeleted(_id);
     }
     
-    function cancelDeleteUtang(uint _id) public onlyOwner {
+    function cancelDeleteUtang(uint _id) public {
         require(pendingDelete[_id], "No delete request to cancel");
         delete pendingDelete[_id];
         emit DeleteCancelled(_id, block.timestamp);
     }
     
-    // 4. Edit utang - Owner only (with VULN #1 and #2 FIXES)
-    function editUtang(uint _id, uint _newAmount, string memory _newItems) public onlyOwner {
-        // VULN #1 FIX: Array bounds check
+    // 4. Edit utang
+    function editUtang(uint _id, uint _newAmount, string memory _newItems) public {
         require(_id < utangList.length, "Utang ID does not exist");
-        require(activeUtang[_id], "Utang does not exist");
+        require(utangList[_id].storeOwner == msg.sender, "Not your debt record");
+        require(activeUtang[msg.sender][_id], "Utang does not exist");
         require(!utangList[_id].paid, "Cannot edit paid utang");
         
-        // VULN #2 FIX: Input validation
         require(_newAmount > 0, "Amount must be greater than zero");
         require(_newAmount <= 10000, "Amount exceeds maximum limit");
         require(bytes(_newItems).length > 0, "Items description cannot be empty");
@@ -131,20 +132,15 @@ contract ListaTrust {
         emit UtangEdited(_id, _newAmount, _newItems);
     }
     
-    // 5. View customer utang - with VULN #3 FIX (pagination)
-    function getCustomerUtang(address _customer, uint _offset, uint _limit) 
-        public view returns (Utang[] memory) 
-    {
-        require(_customer != address(0), "Invalid address");
-        
-        // Temporary array with max size = _limit
+    // 5. Get store owner's utang
+    function getMyUtang(uint _offset, uint _limit) public view returns (Utang[] memory) {
+        // Temporary array
         Utang[] memory temp = new Utang[](_limit);
         uint index = 0;
         uint found = 0;
         
-        // Stop when we have enough records or reach end of array
         for(uint i = 0; i < utangList.length && index < _limit; i++) {
-            if(utangList[i].customer == _customer && activeUtang[i]) {
+            if(utangList[i].storeOwner == msg.sender && activeUtang[msg.sender][i]) {
                 if(found >= _offset) {
                     temp[index] = utangList[i];
                     index++;
@@ -153,7 +149,7 @@ contract ListaTrust {
             }
         }
         
-        // Resize array to actual count
+        // Resize array
         Utang[] memory result = new Utang[](index);
         for(uint i = 0; i < index; i++) {
             result[i] = temp[i];
@@ -161,31 +157,28 @@ contract ListaTrust {
         return result;
     }
     
-    // Backward compatibility - default to first 50 records
-    function getCustomerUtang(address _customer) public view returns (Utang[] memory) {
-        return getCustomerUtang(_customer, 0, 50);
+    // Backward compatibility
+    function getMyUtang() public view returns (Utang[] memory) {
+        return getMyUtang(0, 50);
     }
     
-    // 6. Get total unpaid - with VULN #3 FIX (max loop limit)
-    function getTotalUnpaid(address _customer) public view returns (uint) {
-        require(_customer != address(0), "Invalid address");
-        
+    // 6. Get total unpaid for store owner
+    function getTotalUnpaid(address _storeOwner) public view returns (uint) {
         uint total = 0;
-        // Safety limit: max 1000 iterations
         for(uint i = 0; i < utangList.length && i < 1000; i++) {
-            if(utangList[i].customer == _customer && activeUtang[i] && !utangList[i].paid) {
+            if(utangList[i].storeOwner == _storeOwner && activeUtang[_storeOwner][i] && !utangList[i].paid) {
                 total += utangList[i].amount;
             }
         }
         return total;
     }
     
-    // 7. Security: Verify utang exists and is active (with VULN #1 FIX)
+    // 7. Verify utang exists
     function verifyUtang(uint _id) public view returns (bool) {
-        return _id < utangList.length && activeUtang[_id];
+        return _id < utangList.length;
     }
     
-    // VULN #6 FIX: Two-phase ownership transfer
+    // Ownership transfer functions
     function transferOwnership(address newOwner) public onlyOwner {
         require(newOwner != address(0), "New owner cannot be zero address");
         pendingOwner = newOwner;

@@ -23,12 +23,33 @@
             cursor: pointer;
             color: #666;
         }
-        .form-row {
+        .name-row {
             display: flex;
-            gap: 10px;
+            gap: 15px;
+            margin-bottom: 20px;
         }
-        .form-row .form-group {
+        .name-row .form-group {
             flex: 1;
+            margin-bottom: 0;
+        }
+        .otp-section {
+            display: none;
+        }
+        .message {
+            margin-top: 15px;
+            padding: 10px;
+            border-radius: 5px;
+            display: none;
+        }
+        .message.error {
+            background: #fee;
+            color: #c33;
+            display: block;
+        }
+        .message.success {
+            background: #efe;
+            color: #3c3;
+            display: block;
         }
     </style>
 </head>
@@ -38,43 +59,43 @@
             <img src="assets/logo.png" alt="ListaTrust" class="auth-logo">
         </div>
 
-        <!-- SIGNUP -->
+        <!-- SIGNUP FORM -->
         <div id="auth-signup" class="auth-right">
-            <h2 class="auth-title">Signup</h2>
-            <form class="auth-form" id="registerForm">
-                <label>Username</label>
+            <h2 class="auth-title">Create Account</h2>
+            <form class="auth-form" id="signupForm">
+                <label>USERNAME</label>
                 <input type="text" id="username" placeholder="Username" required>
                 
-                <label>Email</label>
+                <label>EMAIL</label>
                 <input type="email" id="email" placeholder="Email" required>
-                
-                <div class="form-row">
-                    <div class="form-group">
-                        <label>First Name</label>
-                        <input type="text" id="firstName" placeholder="First name">
-                    </div>
-                    <div class="form-group">
-                        <label>Last Name</label>
-                        <input type="text" id="lastName" placeholder="Last name">
-                    </div>
-                </div>
-                
-                <label>Phone (optional)</label>
-                <input type="text" id="phone" placeholder="Phone number">
                 
                 <label>PASSWORD</label>
                 <div class="password-wrapper">
-                    <input type="password" id="password" placeholder="Password" required>
+                    <input type="password" id="password" placeholder="Password" required minlength="8">
                     <i class="fa-regular fa-eye" onclick="togglePassword('password', this)"></i>
                 </div>
-                
+
                 <label>CONFIRM PASSWORD</label>
                 <div class="password-wrapper">
-                    <input type="password" id="confirmPassword" placeholder="Confirm password" required>
+                    <input type="password" id="confirmPassword" placeholder="Confirm password" required minlength="8">
                     <i class="fa-regular fa-eye" onclick="togglePassword('confirmPassword', this)"></i>
                 </div>
                 
-                <button type="submit" class="auth-btn">Signup</button>
+                <div class="name-row">
+                    <div class="form-group">
+                        <label>FIRST NAME</label>
+                        <input type="text" id="firstName" placeholder="First name" required>
+                    </div>
+                    <div class="form-group">
+                        <label>LAST NAME</label>
+                        <input type="text" id="lastName" placeholder="Last name" required>
+                    </div>
+                </div>
+                
+                <label>PHONE (OPTIONAL)</label>
+                <input type="tel" id="phone" placeholder="Phone number">
+                
+                <button type="submit" class="auth-btn">Sign Up</button>
             </form>
             <p class="auth-switch">Already have an account? <a href="login.html">Login</a></p>
             <div id="errorMsg" class="error-message"></div>
@@ -82,13 +103,14 @@
 
         <!-- OTP FORM -->
         <div id="auth-otp" class="auth-right hidden">
-            <h2 class="auth-title">Verify Email</h2>
+            <h2 class="auth-title">Enter OTP</h2>
+            <p style="text-align: center; margin-bottom: 20px;">Code sent to <span id="otpEmail"></span></p>
             <form class="auth-form" id="otpForm">
-                <label>Enter 6-digit OTP sent to your email</label>
+                <label>6-DIGIT CODE</label>
                 <input type="text" id="otp" maxlength="6" placeholder="123456" required>
-                <button type="submit" class="auth-btn">Verify & Complete</button>
+                <button type="submit" class="auth-btn">Verify</button>
             </form>
-            <p class="auth-switch"><a href="#" onclick="document.getElementById('auth-otp').classList.add('hidden'); document.getElementById('auth-signup').classList.remove('hidden'); return false;">Back to Signup</a></p>
+            <p class="auth-switch"><a href="#" onclick="showSignup()">← Back to Sign Up</a></p>
         </div>
     </div>
 
@@ -106,88 +128,125 @@
             }
         }
 
-        let registrationData = {};
+        function showSignup() {
+            document.getElementById('auth-otp').classList.add('hidden');
+            document.getElementById('auth-signup').classList.remove('hidden');
+        }
 
-        document.getElementById('registerForm').addEventListener('submit', async (e) => {
+        // Handle signup form submission
+        document.getElementById('signupForm').addEventListener('submit', async (e) => {
             e.preventDefault();
-
+            
+            // Check if passwords match
             const password = document.getElementById('password').value;
-            const confirm = document.getElementById('confirmPassword').value;
-
-            if (password !== confirm) {
+            const confirmPassword = document.getElementById('confirmPassword').value;
+            
+            if (password !== confirmPassword) {
                 document.getElementById('errorMsg').textContent = 'Passwords do not match';
                 return;
             }
+            
+            const submitBtn = e.target.querySelector('button');
+            const originalText = submitBtn.textContent;
+            submitBtn.textContent = 'Sending OTP...';
+            submitBtn.disabled = true;
 
-            registrationData = {
+            const userData = {
                 username: document.getElementById('username').value,
                 email: document.getElementById('email').value,
+                password: password,
                 firstName: document.getElementById('firstName').value,
                 lastName: document.getElementById('lastName').value,
-                phone: document.getElementById('phone').value,
-                password: password
+                phone: document.getElementById('phone').value || ''
             };
 
             try {
+                // Send OTP request
                 const res = await fetch('http://127.0.0.1:3000/api/auth/register/send-otp', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ 
-                        email: registrationData.email, 
-                        username: registrationData.username,
-                        password: registrationData.password,
-                        firstName: registrationData.firstName,
-                        lastName: registrationData.lastName,
-                        phone: registrationData.phone || ''
+                        email: userData.email, 
+                        username: userData.username,
+                        password: userData.password
                     })
                 });
 
                 const data = await res.json();
-
+                
                 if (res.ok) {
+                    // Store user data temporarily
+                    sessionStorage.setItem('pendingUser', JSON.stringify(userData));
+                    
+                    // Show OTP section
                     document.getElementById('auth-signup').classList.add('hidden');
                     document.getElementById('auth-otp').classList.remove('hidden');
+                    document.getElementById('otpEmail').textContent = userData.email;
+                    
+                    console.log('OTP for testing:', data.otp || 'Check terminal');
                     document.getElementById('errorMsg').textContent = '';
                 } else {
-                    document.getElementById('errorMsg').textContent = data.error;
+                    document.getElementById('errorMsg').textContent = data.error || 'Failed to send OTP';
                 }
             } catch (error) {
-                document.getElementById('errorMsg').textContent = 'Server error';
+                document.getElementById('errorMsg').textContent = 'Error: ' + error.message;
+            } finally {
+                submitBtn.textContent = originalText;
+                submitBtn.disabled = false;
             }
         });
 
+        // Verify OTP
         document.getElementById('otpForm').addEventListener('submit', async (e) => {
             e.preventDefault();
-
+            
             const otp = document.getElementById('otp').value;
-
+            const pendingUser = JSON.parse(sessionStorage.getItem('pendingUser'));
+            
+            if (!otp || otp.length !== 6) {
+                document.getElementById('errorMsg').textContent = 'Please enter 6-digit OTP';
+                return;
+            }
+            
+            const verifyBtn = e.target.querySelector('button');
+            verifyBtn.textContent = 'Verifying...';
+            verifyBtn.disabled = true;
+            
             try {
                 const res = await fetch('http://127.0.0.1:3000/api/auth/register/verify', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ 
-                        email: registrationData.email,
-                        username: registrationData.username,
-                        password: registrationData.password,
-                        firstName: registrationData.firstName || '',
-                        lastName: registrationData.lastName || '',
-                        phone: registrationData.phone || null,
-                        otp: otp
+                    body: JSON.stringify({
+                        email: pendingUser.email,
+                        otp: otp,
+                        username: pendingUser.username,
+                        password: pendingUser.password,
+                        firstName: pendingUser.firstName,
+                        lastName: pendingUser.lastName,
+                        phone: pendingUser.phone
                     })
                 });
 
                 const data = await res.json();
-
+                
                 if (res.ok) {
                     alert('Registration successful! Please login.');
                     window.location.href = 'login.html';
                 } else {
-                    document.getElementById('errorMsg').textContent = data.error;
+                    document.getElementById('errorMsg').textContent = data.error || 'Invalid OTP';
                 }
             } catch (error) {
-                document.getElementById('errorMsg').textContent = 'Server error';
+                document.getElementById('errorMsg').textContent = 'Error: ' + error.message;
+            } finally {
+                verifyBtn.textContent = 'Verify OTP';
+                verifyBtn.disabled = false;
             }
         });
+
+        // Check if already logged in
+        if (localStorage.getItem('token')) {
+            window.location.href = 'dashboard.html';
+        }
     </script>
 </body>
 </html>
