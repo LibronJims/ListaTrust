@@ -2,6 +2,7 @@ const { ethers } = require('ethers');
 const fs = require('fs');
 const path = require('path');
 const mysql = require('mysql2/promise');
+const ganacheHelper = require('./ganacheHelper');
 
 class BlockchainService {
     constructor() {
@@ -11,10 +12,12 @@ class BlockchainService {
         this.pool = null;
         this.initialized = false;
         
-        this.init();
+        // Don't auto-init - wait for explicit call
     }
 
-    init() {
+    async init() {
+        if (this.initialized) return true;
+
         try {
             // Database connection
             this.pool = mysql.createPool({
@@ -28,140 +31,101 @@ class BlockchainService {
 
             // Blockchain connection
             if (!process.env.BLOCKCHAIN_RPC_URL) {
-                console.warn('⚠️ BLOCKCHAIN_RPC_URL not set');
-                return;
+                throw new Error('BLOCKCHAIN_RPC_URL not set in .env');
             }
 
             this.provider = new ethers.providers.JsonRpcProvider(process.env.BLOCKCHAIN_RPC_URL);
 
-            // Master wallet (Account 0 from Ganache)
-            if (process.env.MASTER_PRIVATE_KEY) {
-                this.masterWallet = new ethers.Wallet(process.env.MASTER_PRIVATE_KEY, this.provider);
-                console.log('✅ Master wallet loaded:', this.masterWallet.address);
-            } else {
-                console.warn('⚠️ MASTER_PRIVATE_KEY not set');
+            // Test connection
+            await this.provider.getNetwork();
+            console.log('✅ Connected to Ganache at', process.env.BLOCKCHAIN_RPC_URL);
+
+            // Master wallet (Account 0 from Ganache) - REQUIRED
+            if (!process.env.MASTER_PRIVATE_KEY) {
+                throw new Error('MASTER_PRIVATE_KEY not set in .env');
             }
 
-            // Load contract JSON with absolute path
-            try {
-                // Get the absolute path to the contracts folder
-                const backendPath = __dirname; // This is /backend
-                const projectPath = path.resolve(backendPath, '..'); // Go up to project root
-                const contractPath = path.join(projectPath, 'contracts', 'ListaTrust.json');
-                
-                console.log('📁 Looking for contract at:', contractPath);
-                
-                if (!fs.existsSync(contractPath)) {
-                    throw new Error(`Contract file not found at ${contractPath}`);
-                }
-                
-                const fileContent = fs.readFileSync(contractPath, 'utf8');
-                this.contractJson = JSON.parse(fileContent);
-                
-                if (!this.contractJson.abi) {
-                    throw new Error('Contract JSON missing "abi" field');
-                }
-                if (!this.contractJson.bytecode) {
-                    throw new Error('Contract JSON missing "bytecode" field');
-                }
-                
-                console.log('✅ Contract JSON loaded successfully');
-                console.log('📄 ABI entries:', this.contractJson.abi.length);
-                console.log('🔧 Bytecode length:', this.contractJson.bytecode.length);
-                
-            } catch (e) {
-                console.error('❌ Failed to load contract JSON:', e.message);
-                console.error('Current working directory:', process.cwd());
-                console.error('__dirname:', __dirname);
-                this.contractJson = null;
-                process.exit(1); // Exit since we can't continue without contract
+            this.masterWallet = new ethers.Wallet(process.env.MASTER_PRIVATE_KEY, this.provider);
+            console.log('✅ Master wallet loaded:', this.masterWallet.address);
+
+            // Load contract JSON
+            const backendPath = __dirname;
+            const projectPath = path.resolve(backendPath, '..');
+            const contractPath = path.join(projectPath, 'contracts', 'ListaTrust.json');
+            
+            if (!fs.existsSync(contractPath)) {
+                throw new Error(`Contract file not found at ${contractPath}`);
             }
+            
+            const fileContent = fs.readFileSync(contractPath, 'utf8');
+            this.contractJson = JSON.parse(fileContent);
+            
+            if (!this.contractJson.abi || !this.contractJson.bytecode) {
+                throw new Error('Contract JSON missing ABI or bytecode');
+            }
+            
+            console.log('✅ Contract JSON loaded');
+
+            // Initialize ganache helper
+            await ganacheHelper.init();
 
             this.initialized = true;
-            console.log('✅ Blockchain service initialized');
-            console.log('📡 Connected to:', process.env.BLOCKCHAIN_RPC_URL);
+            return true;
 
         } catch (error) {
             console.error('❌ Blockchain service init error:', error.message);
-            process.exit(1);
+            console.error('   Make sure:');
+            console.error('   1. Ganache is running at', process.env.BLOCKCHAIN_RPC_URL);
+            console.error('   2. MASTER_PRIVATE_KEY is correct in .env');
+            console.error('   3. Contract JSON exists at correct path');
+            return false;
         }
     }
 
-    // Get contract for specific store owner
+    // FIXED: Get contract with better error handling
     async getContractForStoreOwner(storeOwnerAddress) {
         if (!this.initialized) {
-            throw new Error('Blockchain service not initialized');
-        }
-
-        if (!this.contractJson || !this.contractJson.abi) {
-            throw new Error('Contract ABI not loaded');
+            await this.init();
         }
 
         try {
-            // Get store owner's contract address from database using JOIN with users table
+            // First check database
             const [stores] = await this.pool.execute(
-                `SELECT s.contract_address, s.id as store_id, u.id as user_id
+                `SELECT s.contract_address 
                  FROM stores s 
                  JOIN users u ON s.owner_id = u.id 
                  WHERE u.wallet_address = ?`,
                 [storeOwnerAddress]
             );
 
-            console.log('Contract lookup for address:', storeOwnerAddress);
-            console.log('Found stores:', stores);
-
-            if (stores.length === 0) {
-                // Try direct lookup in stores table as fallback
-                const [storesDirect] = await this.pool.execute(
-                    `SELECT s.contract_address, s.id as store_id
-                     FROM stores s
-                     WHERE s.wallet_address = ?`,
-                    [storeOwnerAddress]
-                );
-                
-                console.log('Direct store lookup:', storesDirect);
-                
-                if (storesDirect.length > 0 && storesDirect[0].contract_address) {
-                    return new ethers.Contract(
-                        storesDirect[0].contract_address,
-                        this.contractJson.abi,
-                        this.masterWallet
-                    );
-                }
-                
-                throw new Error(`No contract deployed for store owner ${storeOwnerAddress}`);
+            if (stores.length === 0 || !stores[0].contract_address) {
+                throw new Error(`No contract deployed for ${storeOwnerAddress}`);
             }
 
-            if (!stores[0].contract_address) {
-                throw new Error(`Contract address is null for store owner ${storeOwnerAddress}`);
-            }
-
-            console.log(`✅ Found contract at: ${stores[0].contract_address} for owner ${storeOwnerAddress}`);
-
-            // Create contract instance
             return new ethers.Contract(
                 stores[0].contract_address,
                 this.contractJson.abi,
                 this.masterWallet
             );
+
         } catch (error) {
-            console.error('Error in getContractForStoreOwner:', error);
+            console.error('Error getting contract:', error);
             throw error;
         }
     }
 
-    // Deploy new contract for a store owner
+    // FIXED: Deploy contract with better error handling and gas optimization
     async deployContractForStoreOwner(ownerId, ownerAddress, storeName) {
-        if (!this.initialized || !this.masterWallet) {
-            throw new Error('Blockchain service not properly initialized');
-        }
-
-        if (!this.contractJson) {
-            throw new Error('Contract JSON not loaded');
-        }
-
         try {
-            console.log(`🚀 Deploying contract for ${storeName} (${ownerAddress})...`);
+            if (!this.initialized) {
+                await this.init();
+            }
+
+            if (!this.masterWallet) {
+                throw new Error('Master wallet not initialized');
+            }
+
+            console.log(`\n🚀 Deploying contract for ${storeName} (${ownerAddress})...`);
             
             const factory = new ethers.ContractFactory(
                 this.contractJson.abi,
@@ -169,39 +133,94 @@ class BlockchainService {
                 this.masterWallet
             );
             
-            const contract = await factory.deploy();
+            // Get current gas price
+            const feeData = await this.provider.getFeeData();
+            
+            // Deploy with optimized gas
+            const contract = await factory.deploy({
+                gasPrice: feeData.gasPrice,
+                gasLimit: 3000000 // Explicit gas limit
+            });
+            
+            console.log('⏳ Waiting for deployment confirmation...');
             await contract.deployed();
             
             console.log(`✅ Contract deployed at: ${contract.address}`);
-            
+
             // Save to database
-            await this.pool.execute(
+            const [result] = await this.pool.execute(
                 'UPDATE stores SET contract_address = ?, wallet_address = ? WHERE owner_id = ?',
                 [contract.address, ownerAddress, ownerId]
             );
-            
+
+            if (result.affectedRows === 0) {
+                // Try insert if update fails
+                await this.pool.execute(
+                    'INSERT INTO stores (owner_id, contract_address, wallet_address, store_name, is_approved) VALUES (?, ?, ?, ?, ?)',
+                    [ownerId, contract.address, ownerAddress, storeName, true]
+                );
+            }
+
+            console.log(`✅ Contract address saved to database`);
             return contract.address;
+
         } catch (error) {
-            console.error('Error deploying contract:', error);
-            throw error;
+            console.error('❌ Deployment failed:', error);
+            
+            // Log detailed error
+            if (error.error) {
+                console.error('   Reason:', error.error.reason || error.error.message);
+            }
+            
+            throw new Error(`Contract deployment failed: ${error.message}`);
         }
     }
 
-    // Add utang
+    // FIXED: Add utang with better error handling and multiple items support
     async addUtang(storeOwnerAddress, debtorName, amount, items) {
         try {
+            if (!this.initialized) {
+                await this.init();
+            }
+
             const contract = await this.getContractForStoreOwner(storeOwnerAddress);
             
-            console.log(`➕ Adding utang for debtor "${debtorName}" using contract ${contract.address}`);
-            const tx = await contract.addUtang(debtorName, amount, items);
-            console.log('⏳ Transaction sent:', tx.hash);
+            // Handle multiple items
+            const itemsString = Array.isArray(items) ? items.join('|') : items;
             
+            console.log(`\n➕ Adding utang for "${debtorName}"...`);
+            console.log(`   Amount: ${amount}`);
+            console.log(`   Items: ${itemsString}`);
+            console.log(`   Contract: ${contract.address}`);
+
+            // Get gas price
+            const feeData = await this.provider.getFeeData();
+            
+            // Send transaction
+            const tx = await contract.addUtang(debtorName, amount, itemsString, {
+                gasPrice: feeData.gasPrice,
+                gasLimit: 500000
+            });
+            
+            console.log(`⏳ Transaction sent: ${tx.hash}`);
+            
+            // Wait for confirmation
             const receipt = await tx.wait();
-            console.log('✅ Transaction confirmed in block:', receipt.blockNumber);
+            console.log(`✅ Confirmed in block ${receipt.blockNumber}`);
+            console.log(`⛽ Gas used: ${receipt.gasUsed.toString()}`);
             
             return receipt;
+
         } catch (error) {
-            console.error('Blockchain addUtang error:', error);
+            console.error('❌ Blockchain addUtang error:', error);
+            
+            // Provide helpful error message
+            if (error.message.includes('No contract deployed')) {
+                throw new Error('Contract not deployed for this store owner. Please contact admin.');
+            }
+            if (error.message.includes('nonce')) {
+                throw new Error('Transaction nonce error. Try again.');
+            }
             throw error;
         }
     }
@@ -209,39 +228,92 @@ class BlockchainService {
     // Mark utang as paid
     async markAsPaid(storeOwnerAddress, utangId) {
         try {
+            if (!this.initialized) {
+                await this.init();
+            }
+
             const contract = await this.getContractForStoreOwner(storeOwnerAddress);
             
-            console.log(`💰 Marking utang ${utangId} as paid`);
-            const tx = await contract.markAsPaid(utangId);
-            console.log('⏳ Transaction sent:', tx.hash);
+            console.log(`\n💰 Marking utang ${utangId} as paid...`);
+
+            const feeData = await this.provider.getFeeData();
             
+            const tx = await contract.markAsPaid(utangId, {
+                gasPrice: feeData.gasPrice,
+                gasLimit: 300000
+            });
+            
+            console.log(`⏳ Transaction sent: ${tx.hash}`);
             const receipt = await tx.wait();
-            console.log('✅ Transaction confirmed in block:', receipt.blockNumber);
+            console.log(`✅ Confirmed in block ${receipt.blockNumber}`);
+            console.log(`⛽ Gas used: ${receipt.gasUsed.toString()}`);
             
             return receipt;
+
         } catch (error) {
-            console.error('Blockchain markAsPaid error:', error);
+            console.error('❌ markAsPaid error:', error);
             throw error;
         }
     }
 
-    // Get store owner's utang
-    async getMyUtang(storeOwnerAddress, offset = 0, limit = 50) {
+// Get store owner's utang - FIXED for your contract
+async getMyUtang(storeOwnerAddress, offset = 0, limit = 50) {
+    try {
+        if (!this.initialized) {
+            await this.init();
+        }
+
+        console.log(`\n📋 Fetching utang for ${storeOwnerAddress}...`);
+        
+        const contract = await this.getContractForStoreOwner(storeOwnerAddress);
+        console.log(`✅ Got contract at: ${contract.address}`);
+
+        // Your contract has BOTH versions, so we need to call correctly
+        let utangList = [];
+        
         try {
-            const contract = await this.getContractForStoreOwner(storeOwnerAddress);
+            // Try with parameters first (your optimized version)
+            console.log(`Calling getMyUtang(${offset}, ${limit})...`);
+            utangList = await contract['getMyUtang(uint256,uint256)'](offset, limit);
+        } catch (e) {
+            console.log('Parameter version failed:', e.message);
             
-            console.log(`📋 Fetching utang for ${storeOwnerAddress}`);
-            const utangList = await contract.getMyUtang(offset, limit);
-            
-            return utangList;
-        } catch (error) {
-            console.error('Blockchain getMyUtang error:', error);
-            throw error;
+            try {
+                // Fall back to no-parameter version
+                console.log('Falling back to getMyUtang()...');
+                utangList = await contract['getMyUtang()']();
+            } catch (e2) {
+                console.log('Both versions failed:', e2.message);
+                return [];
+            }
         }
-    }
 
-    // Get all contracts for admin view
+        console.log(`✅ Found ${utangList.length} records`);
+        
+        // Log first record for debugging
+        if (utangList.length > 0) {
+            console.log('Sample record:', {
+                id: utangList[0].id.toString(),
+                debtorName: utangList[0].debtorName,
+                amount: utangList[0].amount.toString(),
+                paid: utangList[0].paid
+            });
+        }
+        
+        return utangList;
+
+    } catch (error) {
+        console.error('❌ getMyUtang error:', error);
+        return [];
+    }
+}
+
+    // Get all contracts for admin
     async getAllContracts() {
+        if (!this.initialized) {
+            await this.init();
+        }
+
         const [stores] = await this.pool.execute(
             `SELECT s.contract_address, s.wallet_address, u.username, u.email, u.id as user_id
              FROM stores s 
@@ -251,28 +323,73 @@ class BlockchainService {
         return stores;
     }
 
-    // Debug function to check database state
-    async debugCheckUser(storeOwnerAddress) {
-        try {
-            const [users] = await this.pool.execute(
-                'SELECT id, username, wallet_address FROM users WHERE wallet_address = ?',
-                [storeOwnerAddress]
-            );
-            console.log('Users found:', users);
-
-            if (users.length > 0) {
-                const [stores] = await this.pool.execute(
-                    'SELECT * FROM stores WHERE owner_id = ?',
-                    [users[0].id]
-                );
-                console.log('Stores found:', stores);
-            }
-
-            return { users, stores: users.length > 0 ? await this.pool.execute('SELECT * FROM stores WHERE owner_id = ?', [users[0].id]) : [] };
-        } catch (error) {
-            console.error('Debug error:', error);
-            return { error: error.message };
+    // FIXED: Check if contract exists
+    async hasContract(ownerId) {
+        if (!this.initialized) {
+            await this.init();
         }
+
+        const [stores] = await this.pool.execute(
+            'SELECT contract_address FROM stores WHERE owner_id = ?',
+            [ownerId]
+        );
+
+        return stores.length > 0 && stores[0].contract_address !== null;
+    }
+
+    // FIXED: Get wallet balance
+    async getBalance(address) {
+        if (!this.initialized) {
+            await this.init();
+        }
+
+        const balance = await this.provider.getBalance(address);
+        return ethers.utils.formatEther(balance);
+    }
+
+    // FIXED: Debug function
+    async debugCheck(storeOwnerAddress) {
+        if (!this.initialized) {
+            await this.init();
+        }
+
+        console.log('\n🔍 DEBUG INFO:');
+        console.log('================');
+        
+        // Check provider
+        try {
+            const network = await this.provider.getNetwork();
+            console.log('Network:', network.name, 'chainId:', network.chainId);
+        } catch (e) {
+            console.log('Provider error:', e.message);
+        }
+
+        // Check accounts
+        try {
+            const accounts = await this.provider.listAccounts();
+            console.log('Ganache accounts:', accounts.length);
+            console.log('Account 0:', accounts[0]);
+            console.log('Account 1:', accounts[1]);
+        } catch (e) {
+            console.log('Account error:', e.message);
+        }
+
+        // Check database
+        const [users] = await this.pool.execute(
+            'SELECT id, username, wallet_address FROM users WHERE wallet_address = ?',
+            [storeOwnerAddress]
+        );
+        console.log('User in DB:', users);
+
+        if (users.length > 0) {
+            const [stores] = await this.pool.execute(
+                'SELECT * FROM stores WHERE owner_id = ?',
+                [users[0].id]
+            );
+            console.log('Store in DB:', stores);
+        }
+
+        return { users, provider: 'ok' };
     }
 }
 

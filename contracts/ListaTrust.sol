@@ -7,7 +7,7 @@ contract ListaTrust {
         address storeOwner;      // Who owns this debt record (the store owner)
         string debtorName;        // Name of person who owes (e.g., "Aling Nena")
         uint amount;
-        string items;
+        string items;             // Pipe-separated items: "banana|milk|rice"
         bool paid;
         uint timestamp;
     }
@@ -16,10 +16,11 @@ contract ListaTrust {
     address public owner;
     address public pendingOwner;
     
-    // Track active utang per store owner
+    // Track active utang per store owner - using mapping for efficiency
+    mapping(address => uint[]) public storeOwnerUtangIds;
     mapping(address => mapping(uint => bool)) public activeUtang;
     
-    // Store owner debt limits (total allowed per store owner)
+    // Store owner debt limits
     mapping(address => uint) public storeOwnerDebtLimit;
     
     // Track pending deletions
@@ -42,8 +43,6 @@ contract ListaTrust {
     }
     
     modifier onlyStoreOwner() {
-        // In a real app, you'd have store owner validation
-        // For now, any address can add debts
         _;
     }
     
@@ -57,7 +56,7 @@ contract ListaTrust {
         storeOwnerDebtLimit[_storeOwner] = _limit;
     }
     
-    // 1. Record utang - Store owner adds debt for a debtor
+    // 1. Record utang - OPTIMIZED for gas
     function addUtang(string memory _debtorName, uint _amount, string memory _items) public {
         require(bytes(_debtorName).length > 0, "Debtor name cannot be empty");
         require(_amount > 0, "Amount must be greater than zero");
@@ -72,11 +71,12 @@ contract ListaTrust {
         
         uint newId = utangList.length;
         utangList.push(Utang(newId, msg.sender, _debtorName, _amount, _items, false, block.timestamp));
+        storeOwnerUtangIds[msg.sender].push(newId);
         activeUtang[msg.sender][newId] = true;
         emit NewUtang(newId, msg.sender, _debtorName, _amount, _items);
     }
     
-    // 2. Mark as paid
+    // 2. Mark as paid - OPTIMIZED for gas
     function markAsPaid(uint _id) public {
         require(_id < utangList.length, "Utang ID does not exist");
         require(utangList[_id].storeOwner == msg.sender, "Not your debt record");
@@ -84,6 +84,7 @@ contract ListaTrust {
         require(!utangList[_id].paid, "Already paid");
         
         utangList[_id].paid = true;
+        // Note: We keep activeUtang true for history but mark paid flag
         emit UtangPaid(_id);
     }
     
@@ -132,28 +133,30 @@ contract ListaTrust {
         emit UtangEdited(_id, _newAmount, _newItems);
     }
     
-    // 5. Get store owner's utang
+    // 5. Get store owner's utang - OPTIMIZED for gas
     function getMyUtang(uint _offset, uint _limit) public view returns (Utang[] memory) {
-        // Temporary array
-        Utang[] memory temp = new Utang[](_limit);
-        uint index = 0;
-        uint found = 0;
+        uint[] storage ownerIds = storeOwnerUtangIds[msg.sender];
         
-        for(uint i = 0; i < utangList.length && index < _limit; i++) {
-            if(utangList[i].storeOwner == msg.sender && activeUtang[msg.sender][i]) {
-                if(found >= _offset) {
-                    temp[index] = utangList[i];
-                    index++;
-                }
-                found++;
+        uint start = _offset;
+        uint end = _offset + _limit;
+        if (end > ownerIds.length) {
+            end = ownerIds.length;
+        }
+        
+        if (start >= ownerIds.length) {
+            return new Utang[](0);
+        }
+        
+        uint resultCount = end - start;
+        Utang[] memory result = new Utang[](resultCount);
+        
+        for (uint i = 0; i < resultCount; i++) {
+            uint id = ownerIds[start + i];
+            if (activeUtang[msg.sender][id]) {
+                result[i] = utangList[id];
             }
         }
         
-        // Resize array
-        Utang[] memory result = new Utang[](index);
-        for(uint i = 0; i < index; i++) {
-            result[i] = temp[i];
-        }
         return result;
     }
     
@@ -162,12 +165,15 @@ contract ListaTrust {
         return getMyUtang(0, 50);
     }
     
-    // 6. Get total unpaid for store owner
+    // 6. Get total unpaid for store owner - OPTIMIZED for gas
     function getTotalUnpaid(address _storeOwner) public view returns (uint) {
         uint total = 0;
-        for(uint i = 0; i < utangList.length && i < 1000; i++) {
-            if(utangList[i].storeOwner == _storeOwner && activeUtang[_storeOwner][i] && !utangList[i].paid) {
-                total += utangList[i].amount;
+        uint[] storage ownerIds = storeOwnerUtangIds[_storeOwner];
+        
+        for(uint i = 0; i < ownerIds.length; i++) {
+            uint id = ownerIds[i];
+            if (activeUtang[_storeOwner][id] && !utangList[id].paid) {
+                total += utangList[id].amount;
             }
         }
         return total;

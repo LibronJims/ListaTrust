@@ -18,10 +18,13 @@ const otpValidation = [
     body('otp').isLength({ min: 6, max: 6 }).matches(/^\d+$/)
 ];
 
+// FIXED: Make debtorId optional
 const debtorValidation = [
-    body('debtorId').notEmpty().trim().escape(),
+    body('debtorId').optional().trim().escape(),  // ← Changed to optional
     body('firstName').notEmpty().trim().escape(),
-    body('lastName').notEmpty().trim().escape()
+    body('lastName').notEmpty().trim().escape(),
+    body('phone').optional().trim().escape(),
+    body('email').optional().isEmail().normalizeEmail()
 ];
 
 module.exports = {

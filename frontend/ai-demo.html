@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>ListaTrust AI Demo</title>
+    <style>
+        body { font-family: Arial; padding: 20px; background: #f5f5f5; }
+        .card { background: white; padding: 20px; margin: 10px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        .green { color: green; }
+        .yellow { color: orange; }
+        .red { color: red; }
+        .score { font-size: 48px; font-weight: bold; }
+        .factors { margin-top: 10px; padding: 10px; background: #f0f0f0; border-radius: 5px; }
+    </style>
+</head>
+<body>
+    <h1>ListaTrust AI Risk Scoring Demo</h1>
+    <div class="card">
+        <h3>How AI Calculates Trust Scores</h3>
+        <p>Based on RFM Analysis (Recency, Frequency, Monetary):</p>
+        <ul>
+            <li><strong>Recency (30%)</strong> - How recent was their last activity?</li>
+            <li><strong>Frequency (20%)</strong> - How often do they transact?</li>
+            <li><strong>Monetary (40%)</strong> - Do they pay on time?</li>
+            <li><strong>Active Debts (10%)</strong> - Penalty for too many active debts</li>
+        </ul>
+    </div>
+    <div class="card">
+        <h3>Risk Levels:</h3>
+        <p><span class="green">🟢 HIGH (70-100)</span> - Low risk, pays on time</p>
+        <p><span class="yellow">🟡 MEDIUM (40-69)</span> - Moderate risk, occasional late payments</p>
+        <p><span class="red">🔴 LOW (0-39)</span> - High risk, frequent late payments</p>
+    </div>
+</body>
+</html>
