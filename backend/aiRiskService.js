@@ -1,7 +1,8 @@
-// aiRiskService.js - RFM-based trust scoring system
-// Matches manuscript Section 2.5.1 and Appendix A.1
+// backend/aiRiskService.js - UPDATED to use Python AI
+// Manuscript Reference: Section 2.5.1 - AI Core Feature
 
 const mysql = require('mysql2/promise');
+const aiPythonService = require('./aiPythonService');
 
 class AiRiskService {
     constructor() {
@@ -15,168 +16,113 @@ class AiRiskService {
         });
     }
 
-    // Calculate RFM (Recency, Frequency, Monetary) scores
-    // Based on manuscript: "RFM analysis model to generate dynamic Trust Score"
+    /**
+     * Calculate trust score using Python AI model
+     * Falls back to rule-based if Python unavailable
+     */
     async calculateTrustScore(debtorId) {
         try {
-            // Get debtor's transaction history
-            const [transactions] = await this.pool.execute(
-                `SELECT * FROM transactions 
-                 WHERE debtor_id = ? 
-                 ORDER BY created_at DESC 
-                 LIMIT 20`,
+            // Get debtor's complete history for AI features
+            const [debtor] = await this.pool.execute(
+                `SELECT 
+                    total_borrowed, 
+                    total_repaid, 
+                    active_debts, 
+                    completed_debts, 
+                    on_time_payments,
+                    first_name,
+                    last_name
+                 FROM debtors WHERE id = ?`,
                 [debtorId]
             );
 
-            if (transactions.length === 0) {
-                return {
-                    score: 50,
-                    level: 'MEDIUM',
-                    color: 'Yellow',
-                    factors: ['New customer - no history'],
-                    debtor_id: debtorId
-                };
+            if (debtor.length === 0) {
+                return this.getDefaultScore(debtorId);
             }
 
-            // ===== RFM CALCULATIONS =====
-            // As specified in manuscript Section 2.2
-            
-            // 1. RECENCY - How recent was their last payment?
-            const lastTransaction = transactions[0];
-            const daysSinceLastActivity = this.getDaysSince(lastTransaction.created_at);
-            let recencyScore = 100;
-            if (daysSinceLastActivity > 30) recencyScore = 30;
-            else if (daysSinceLastActivity > 14) recencyScore = 60;
-            else if (daysSinceLastActivity > 7) recencyScore = 80;
-            
-            // 2. FREQUENCY - How often do they borrow/pay?
-            const completedTransactions = transactions.filter(t => t.status === 'COMPLETED').length;
-            let frequencyScore = Math.min(100, completedTransactions * 10);
-            
-            // 3. MONETARY - Do they pay on time?
-            let onTimeCount = 0;
-            let lateCount = 0;
-            
-            transactions.forEach(t => {
-                if (t.status === 'COMPLETED' && t.due_date && t.paid_date) {
-                    const dueDate = new Date(t.due_date);
-                    const paidDate = new Date(t.paid_date);
-                    if (paidDate <= dueDate) {
-                        onTimeCount++;
-                    } else {
-                        lateCount++;
-                    }
-                }
+            console.log(`🤖 Calculating AI score for debtor ${debtor[0].first_name} ${debtor[0].last_name}`);
+            console.log('   Features:', {
+                total_borrowed: debtor[0].total_borrowed,
+                total_repaid: debtor[0].total_repaid,
+                active_debts: debtor[0].active_debts,
+                completed_debts: debtor[0].completed_debts,
+                on_time_payments: debtor[0].on_time_payments
             });
 
-            const totalPayments = onTimeCount + lateCount;
-            let monetaryScore = 50; // Default
+            // Call Python AI service
+            const aiResult = await aiPythonService.predictTrustScore(debtor[0]);
             
-            if (totalPayments > 0) {
-                monetaryScore = (onTimeCount / totalPayments) * 100;
-            }
-
-            // 4. ACTIVE DEBTS PENALTY
-            const [debtorInfo] = await this.pool.execute(
-                'SELECT active_debts, total_borrowed, total_repaid FROM debtors WHERE id = ?',
-                [debtorId]
+            // Update database with AI result
+            await this.pool.execute(
+                `UPDATE debtors 
+                 SET trust_score = ?, trust_level = ? 
+                 WHERE id = ?`,
+                [aiResult.score, aiResult.level, debtorId]
             );
 
-            let activeDebtPenalty = 0;
-            if (debtorInfo[0]?.active_debts > 3) {
-                activeDebtPenalty = 20; // Too many active debts
-            } else if (debtorInfo[0]?.active_debts > 1) {
-                activeDebtPenalty = 10;
-            }
-
-            // 5. FINAL SCORE (Weighted average - matches manuscript)
-            // Recency 30%, Frequency 20%, Monetary 40%, Active Debts 10%
-            const finalScore = Math.round(
-                (recencyScore * 0.3) +      // Recency 30%
-                (frequencyScore * 0.2) +     // Frequency 20%
-                (monetaryScore * 0.4) +       // Monetary 40%
-                (100 - activeDebtPenalty) * 0.1  // Active debts 10%
-            );
-
-            // Determine level and color (for dashboard Red/Yellow/Green)
-            let level, color;
-            if (finalScore >= 70) {
-                level = 'HIGH';
-                color = 'Green';
-            } else if (finalScore >= 40) {
-                level = 'MEDIUM';
-                color = 'Yellow';
-            } else {
-                level = 'LOW';
-                color = 'Red';
-            }
-
-            // Factors for explainability (matches manuscript's XAI requirement)
-            const factors = [];
-            if (recencyScore < 50) factors.push('Inactive recently');
-            if (frequencyScore < 30) factors.push('Infrequent borrower');
-            if (monetaryScore < 50) factors.push('Frequent late payments');
-            if (activeDebtPenalty > 0) factors.push('Too many active debts');
-            if (factors.length === 0) factors.push('Good payment behavior');
+            console.log(`✅ AI Result: ${aiResult.level} (${aiResult.score}) - ${aiResult.model}`);
 
             return {
                 debtor_id: debtorId,
-                score: finalScore,
-                level: level,
-                color: color,
-                factors: factors,
-                components: {
-                    recency: recencyScore,
-                    frequency: frequencyScore,
-                    monetary: monetaryScore,
-                    activeDebtPenalty: activeDebtPenalty
-                }
+                score: aiResult.score,
+                level: aiResult.level,
+                confidence: aiResult.confidence || 90,
+                factors: aiResult.factors,
+                model: aiResult.model
             };
 
         } catch (error) {
-            console.error('AI Risk calculation error:', error);
-            return {
-                score: 50,
-                level: 'MEDIUM',
-                color: 'Yellow',
-                factors: ['Error calculating score'],
-                debtor_id: debtorId,
-                error: error.message
-            };
+            console.error('❌ AI calculation error:', error);
+            return this.getDefaultScore(debtorId);
         }
     }
 
-    // Update trust score in database
+    /**
+     * Update debtor's trust score (triggered after payments)
+     */
     async updateDebtorTrustScore(debtorId) {
-        const scoreData = await this.calculateTrustScore(debtorId);
-        
-        await this.pool.execute(
-            `UPDATE debtors 
-             SET trust_score = ?, trust_level = ?
-             WHERE id = ?`,
-            [scoreData.score, scoreData.level, debtorId]
-        );
-
-        return scoreData;
+        return await this.calculateTrustScore(debtorId);
     }
 
-    // Recalculate scores for ALL debtors of a store
+    /**
+     * Recalculate scores for ALL debtors in a store
+     */
     async recalculateStoreScores(storeId) {
+        console.log(`🔄 Recalculating AI scores for store ${storeId}...`);
+        
         const [debtors] = await this.pool.execute(
             'SELECT id FROM debtors WHERE store_id = ?',
             [storeId]
         );
 
         const results = [];
+        let pythonSuccess = 0;
+        let fallbackCount = 0;
+
         for (const debtor of debtors) {
-            const score = await this.updateDebtorTrustScore(debtor.id);
+            const score = await this.calculateTrustScore(debtor.id);
             results.push(score);
+            
+            if (score.model.includes('Python')) {
+                pythonSuccess++;
+            } else {
+                fallbackCount++;
+            }
         }
+
+        const mode = await aiPythonService.getMode();
+        
+        console.log(`✅ Recalculated ${results.length} debtors`);
+        console.log(`   - Python AI: ${pythonSuccess}`);
+        console.log(`   - Fallback: ${fallbackCount}`);
+        console.log(`   - Mode: ${mode}`);
 
         return results;
     }
 
-    // Get risk summary for dashboard (matches Figure 1 in manuscript)
+    /**
+     * Get risk summary for dashboard
+     */
     async getStoreRiskSummary(storeId) {
         const [stats] = await this.pool.execute(
             `SELECT 
@@ -190,16 +136,28 @@ class AiRiskService {
             [storeId]
         );
 
-        return stats[0];
+        // Check AI service status
+        const aiHealth = await aiPythonService.healthCheck();
+        
+        return {
+            ...stats[0],
+            ai_service: aiHealth.status === 'AI Service is running' ? 'online' : 'offline',
+            ai_mode: await aiPythonService.getMode()
+        };
     }
 
-    // Helper: Calculate days since date
-    getDaysSince(dateString) {
-        const date = new Date(dateString);
-        const now = new Date();
-        const diffTime = Math.abs(now - date);
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-        return diffDays;
+    /**
+     * Default score when debtor not found
+     */
+    getDefaultScore(debtorId = null) {
+        return {
+            debtor_id: debtorId,
+            score: 50,
+            level: 'MEDIUM',
+            confidence: 0,
+            factors: ['New debtor - insufficient data'],
+            model: 'Default'
+        };
     }
 }
 

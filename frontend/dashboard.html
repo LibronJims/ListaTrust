@@ -564,29 +564,41 @@
             </div>
         </div>
 
-        <!-- AI Trust Levels -->
-        <div class="trust-levels">
-            <h3><i class="fa-solid fa-shield" style="margin-right: 10px;"></i>AI Trust Levels</h3>
-            <div class="trust-bars">
-                <div class="trust-item">
-                    <span class="trust-label high"><i class="fa-regular fa-circle-check"></i> HIGH (Safe)</span>
-                    <span id="highCount" style="font-size: 20px; font-weight: 600;">0</span>
-                </div>
-                <div class="trust-item">
-                    <span class="trust-label medium"><i class="fa-regular fa-clock"></i> MEDIUM</span>
-                    <span id="mediumCount" style="font-size: 20px; font-weight: 600;">0</span>
-                </div>
-                <div class="trust-item">
-                    <span class="trust-label low"><i class="fa-regular fa-circle-exclamation"></i> LOW (Risky)</span>
-                    <span id="lowCount" style="font-size: 20px; font-weight: 600;">0</span>
-                </div>
-            </div>
-            <div style="margin-top: 10px; text-align: right;">
-                <button onclick="recalculateAIScores()" class="btn-small">
-                    <i class="fa-solid fa-rotate"></i> Recalculate AI Scores
-                </button>
-            </div>
+<!-- AI Trust Levels -->
+<div class="trust-levels">
+    <h3><i class="fa-solid fa-shield" style="margin-right: 10px;"></i>AI Trust Levels</h3>
+    
+    <!-- ADD THIS AI STATUS INDICATOR -->
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; padding: 5px 10px; background: #f0f0f0; border-radius: 5px;">
+        <div>
+            <i class="fa-solid fa-microchip"></i> 
+            <span id="aiModelDisplay">AI Model: Random Forest (Python)</span>
         </div>
+        <div id="aiStatusBadge">
+            <span style="color: orange;">⏳ Checking...</span>
+        </div>
+    </div>
+    
+    <div class="trust-bars">
+        <div class="trust-item">
+            <span class="trust-label high"><i class="fa-regular fa-circle-check"></i> HIGH (Safe)</span>
+            <span id="highCount" style="font-size: 20px; font-weight: 600;">0</span>
+        </div>
+        <div class="trust-item">
+            <span class="trust-label medium"><i class="fa-regular fa-clock"></i> MEDIUM</span>
+            <span id="mediumCount" style="font-size: 20px; font-weight: 600;">0</span>
+        </div>
+        <div class="trust-item">
+            <span class="trust-label low"><i class="fa-regular fa-circle-exclamation"></i> LOW (Risky)</span>
+            <span id="lowCount" style="font-size: 20px; font-weight: 600;">0</span>
+        </div>
+    </div>
+    <div style="margin-top: 10px; text-align: right;">
+        <button onclick="recalculateAIScores()" class="btn-small">
+            <i class="fa-solid fa-rotate"></i> Recalculate AI Scores
+        </button>
+    </div>
+</div>
 
         <!-- Quick Actions - SQL -->
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 0 30px 30px 30px;">

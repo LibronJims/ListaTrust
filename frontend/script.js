@@ -1,21 +1,29 @@
 // frontend/script.js
 // ListaTrust Frontend JavaScript
 
-// ============ CRITICAL SECURITY FIX ============
-// Check if user is authenticated BEFORE anything else
+// ============ GLOBAL VARIABLES ============
+const token = localStorage.getItem('token');
+let currentUser = null;
+let aiServiceStatus = 'checking';
+
+// ============ HELPER FUNCTIONS ============
+function getCurrentPage() {
+    return window.location.pathname.split('/').pop() || '';
+}
+
+// ============ AUTH CHECK - Only runs on dashboard ============
 (function() {
-    const token = localStorage.getItem('token');
-    const currentPage = window.location.pathname;
+    const currentPage = getCurrentPage();
     
-    // If on dashboard page and no token, redirect to login
-    if (currentPage.includes('dashboard.html') && !token) {
-        console.log('🔒 No token found - redirecting to login');
-        window.location.href = 'login.html';
-        return;
-    }
-    
-    // If token exists, verify it with backend
-    if (token && currentPage.includes('dashboard.html')) {
+    // Only run auth check on dashboard
+    if (currentPage === 'dashboard.html') {
+        if (!token) {
+            console.log('🔒 No token found - redirecting to login');
+            window.location.href = 'login.html';
+            return;
+        }
+        
+        // Verify token with backend
         fetch('http://127.0.0.1:3000/api/auth/me', {
             headers: { 'Authorization': `Bearer ${token}` }
         })
@@ -38,20 +46,10 @@
     }
 })();
 
-// ============ GLOBAL VARIABLES ============
-const token = localStorage.getItem('token');
-let currentUser = null;
-
-// Rest of your script.js code continues here...
-// [KEEP ALL YOUR EXISTING CODE BELOW THIS LINE]
-
-// Check authentication on page load
-if (!token && window.location.pathname.includes('dashboard.html')) {
-    window.location.href = 'login.html';
-}
-
-// ============ PAGE NAVIGATION ============
+// ============ PAGE NAVIGATION (dashboard only) ============
 function showPage(page) {
+    if (getCurrentPage() !== 'dashboard.html') return;
+    
     document.querySelectorAll('.page-content').forEach(p => p.classList.add('hidden'));
     document.getElementById(`page-${page}`).classList.remove('hidden');
     document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
@@ -59,6 +57,8 @@ function showPage(page) {
 }
 
 function filterCards(query) {
+    if (getCurrentPage() !== 'dashboard.html') return;
+    
     const q = query.toLowerCase();
     document.querySelectorAll('.debtor-card').forEach(card => {
         const name = card.getAttribute('data-name')?.toLowerCase() || '';
@@ -66,8 +66,10 @@ function filterCards(query) {
     });
 }
 
-// ============ PROFILE FUNCTIONS ============
+// ============ PROFILE FUNCTIONS (dashboard only) ============
 function updateNavbarAvatar() {
+    if (getCurrentPage() !== 'dashboard.html') return;
+    
     const avatarDiv = document.getElementById('userAvatar');
     const initialsSpan = document.getElementById('userInitials');
     
@@ -85,6 +87,8 @@ function updateNavbarAvatar() {
 }
 
 function showProfileModal() {
+    if (getCurrentPage() !== 'dashboard.html') return;
+    
     document.getElementById('profileUsername').value = currentUser.username || '';
     document.getElementById('profileEmail').value = currentUser.email || '';
     document.getElementById('profileName').value = `${currentUser.first_name || ''} ${currentUser.last_name || ''}`.trim();
@@ -100,7 +104,7 @@ function showProfileModal() {
 }
 
 async function uploadProfilePhoto(input) {
-    if (!input.files[0]) return;
+    if (getCurrentPage() !== 'dashboard.html' || !input.files[0]) return;
 
     const formData = new FormData();
     formData.append('photo', input.files[0]);
@@ -129,10 +133,51 @@ async function uploadProfilePhoto(input) {
     }
 }
 
-// ============ DASHBOARD LOADING ============
-async function loadDashboard() {
+// ============ AI STATUS CHECK (dashboard only) ============
+async function checkAIServiceStatus() {
+    if (getCurrentPage() !== 'dashboard.html') return;
+    
     try {
-        // Get user info
+        const res = await fetch('http://127.0.0.1:3000/api/ai/health', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        
+        if (!res.ok) throw new Error('Failed to check AI status');
+        
+        const data = await res.json();
+        const statusBadge = document.getElementById('aiStatusBadge');
+        const modelDisplay = document.getElementById('aiModelDisplay');
+        
+        if (data.status === 'AI Service is running') {
+            if (statusBadge) statusBadge.innerHTML = '<span style="color: green; font-weight: bold;">✅ Python AI Online</span>';
+            if (modelDisplay) modelDisplay.innerHTML = 'AI Model: Random Forest Classifier (Python)';
+            aiServiceStatus = 'python';
+            console.log('🤖 Python AI service is ONLINE');
+        } else {
+            if (statusBadge) statusBadge.innerHTML = '<span style="color: orange; font-weight: bold;">⚠️ Using Fallback AI</span>';
+            if (modelDisplay) modelDisplay.innerHTML = 'AI Model: Rule-Based (Fallback)';
+            aiServiceStatus = 'fallback';
+            console.log('⚠️ Using fallback rule-based AI');
+        }
+    } catch (error) {
+        console.error('AI status check failed:', error);
+        const statusBadge = document.getElementById('aiStatusBadge');
+        const modelDisplay = document.getElementById('aiModelDisplay');
+        if (statusBadge) {
+            statusBadge.innerHTML = '<span style="color: red; font-weight: bold;">❌ AI Offline (Using Fallback)</span>';
+        }
+        if (modelDisplay) {
+            modelDisplay.innerHTML = 'AI Model: Rule-Based (Fallback)';
+        }
+        aiServiceStatus = 'offline';
+    }
+}
+
+// ============ DASHBOARD LOADING (dashboard only) ============
+async function loadDashboard() {
+    if (getCurrentPage() !== 'dashboard.html') return;
+    
+    try {
         const userRes = await fetch('http://127.0.0.1:3000/api/auth/me', {
             headers: { 'Authorization': `Bearer ${token}` }
         });
@@ -147,16 +192,13 @@ async function loadDashboard() {
         
         currentUser = await userRes.json();
         
-        // Update navbar
         document.getElementById('userNameDisplay').textContent = currentUser.first_name || currentUser.username;
         updateNavbarAvatar();
 
-        // Update wallet display
         document.getElementById('myWallet').textContent = currentUser.wallet_address ? 
             currentUser.wallet_address.substring(0, 6) + '...' + currentUser.wallet_address.substring(38) : 
             'No wallet';
 
-        // Get stats
         const statsRes = await fetch('http://127.0.0.1:3000/api/dashboard/stats', {
             headers: { 'Authorization': `Bearer ${token}` }
         });
@@ -167,19 +209,18 @@ async function loadDashboard() {
         document.getElementById('collectedAmount').textContent = `₱${stats.collectedAmount.toLocaleString()}`;
         document.getElementById('totalTransactions').textContent = stats.totalTransactions;
 
-        // Update blockchain stats
         if (stats.blockchainTotal !== undefined) {
             document.getElementById('blockchainTotal').textContent = stats.blockchainTotal;
             document.getElementById('activeBlockchain').textContent = stats.activeBlockchain;
         }
 
-        // Update trust levels
         stats.trustLevels.forEach(level => {
             if (level.trust_level === 'HIGH') document.getElementById('highCount').textContent = level.count;
             if (level.trust_level === 'MEDIUM') document.getElementById('mediumCount').textContent = level.count;
             if (level.trust_level === 'LOW') document.getElementById('lowCount').textContent = level.count;
         });
 
+        await checkAIServiceStatus();
         loadDebtors();
         loadTransactions();
 
@@ -189,6 +230,8 @@ async function loadDashboard() {
 }
 
 async function loadDebtors() {
+    if (getCurrentPage() !== 'dashboard.html') return;
+    
     try {
         const res = await fetch('http://127.0.0.1:3000/api/debtors', {
             headers: { 'Authorization': `Bearer ${token}` }
@@ -197,8 +240,8 @@ async function loadDebtors() {
         if (!res.ok) return;
         
         const debtors = await res.json();
-
         const container = document.getElementById('debtorsCards');
+        
         if (debtors.length === 0) {
             container.innerHTML = '<div style="text-align: center; padding: 40px; color: #999;"><i class="fa-regular fa-folder-open" style="font-size: 48px; margin-bottom: 10px;"></i><br>No debtors yet</div>';
             return;
@@ -241,6 +284,8 @@ async function loadDebtors() {
 }
 
 async function loadTransactions() {
+    if (getCurrentPage() !== 'dashboard.html') return;
+    
     try {
         const res = await fetch('http://127.0.0.1:3000/api/debtors', {
             headers: { 'Authorization': `Bearer ${token}` }
@@ -249,8 +294,8 @@ async function loadTransactions() {
         if (!res.ok) return;
         
         const debtors = await res.json();
-        
         let allTransactions = [];
+        
         for (const debtor of debtors.slice(0, 5)) {
             const txnRes = await fetch(`http://127.0.0.1:3000/api/transactions/debtor/${debtor.debtor_id}`, {
                 headers: { 'Authorization': `Bearer ${token}` }
@@ -262,6 +307,7 @@ async function loadTransactions() {
         }
 
         const container = document.getElementById('transactionsCards');
+        
         if (allTransactions.length === 0) {
             container.innerHTML = '<div style="text-align: center; padding: 40px; color: #999;"><i class="fa-regular fa-clock" style="font-size: 48px; margin-bottom: 10px;"></i><br>No transactions yet</div>';
             return;
@@ -296,9 +342,11 @@ async function loadTransactions() {
     }
 }
 
-// ============ DEBTOR FUNCTIONS ============
-// Add Debtor Form - FIXED VERSION
+// ============ DEBTOR FUNCTIONS (dashboard only) ============
+// Add Debtor Form
 document.addEventListener('DOMContentLoaded', function() {
+    if (getCurrentPage() !== 'dashboard.html') return;
+    
     const addDebtorForm = document.getElementById('addDebtorForm');
     if (addDebtorForm) {
         addDebtorForm.addEventListener('submit', async (e) => {
@@ -311,8 +359,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 phone: document.getElementById('phone').value
             };
 
-            console.log('Adding debtor:', debtor); // For debugging
-
             try {
                 const res = await fetch('http://127.0.0.1:3000/api/debtors', {
                     method: 'POST',
@@ -324,10 +370,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 });
 
                 const data = await res.json();
-                console.log('Response:', data); // For debugging
                 
                 if (res.ok) {
-                    // FIXED: Check if debtorId exists in response
                     const debtorId = data.debtorId || data.id || 'generated';
                     alert(`Debtor added successfully! ID: ${debtorId}`);
                     loadDebtors();
@@ -345,6 +389,8 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 window.editDebtor = (debtorId, firstName, lastName, phone, email) => {
+    if (getCurrentPage() !== 'dashboard.html') return;
+    
     document.getElementById('editDebtorId').value = debtorId;
     document.getElementById('editFirstName').value = firstName;
     document.getElementById('editLastName').value = lastName;
@@ -355,6 +401,8 @@ window.editDebtor = (debtorId, firstName, lastName, phone, email) => {
 
 // Edit Debtor Form
 document.addEventListener('DOMContentLoaded', function() {
+    if (getCurrentPage() !== 'dashboard.html') return;
+    
     const editDebtorForm = document.getElementById('editDebtorForm');
     if (editDebtorForm) {
         editDebtorForm.addEventListener('submit', async (e) => {
@@ -390,6 +438,7 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 window.deleteDebtor = async (debtorId) => {
+    if (getCurrentPage() !== 'dashboard.html') return;
     if (!confirm('Are you sure you want to delete this debtor?')) return;
 
     const res = await fetch(`http://127.0.0.1:3000/api/debtors/${debtorId}`, {
@@ -408,7 +457,7 @@ window.deleteDebtor = async (debtorId) => {
 };
 
 async function uploadDebtorPhoto(input) {
-    if (!input.files[0]) return;
+    if (getCurrentPage() !== 'dashboard.html' || !input.files[0]) return;
 
     const debtorId = document.getElementById('editDebtorId').value;
     const formData = new FormData();
@@ -426,9 +475,11 @@ async function uploadDebtorPhoto(input) {
     }
 }
 
-// ============ TRANSACTION FUNCTIONS ============
+// ============ TRANSACTION FUNCTIONS (dashboard only) ============
 // Borrow Form
 document.addEventListener('DOMContentLoaded', function() {
+    if (getCurrentPage() !== 'dashboard.html') return;
+    
     const borrowForm = document.getElementById('borrowForm');
     if (borrowForm) {
         borrowForm.addEventListener('submit', async (e) => {
@@ -464,6 +515,8 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 window.markAsPaid = async (transactionId) => {
+    if (getCurrentPage() !== 'dashboard.html') return;
+    
     const res = await fetch(`http://127.0.0.1:3000/api/transactions/pay/${transactionId}`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` }
@@ -477,6 +530,8 @@ window.markAsPaid = async (transactionId) => {
 };
 
 window.editTransaction = (transactionId) => {
+    if (getCurrentPage() !== 'dashboard.html') return;
+    
     const newAmount = prompt('Enter new amount:');
     if (newAmount) {
         editTransactionAmount(transactionId, newAmount);
@@ -484,6 +539,8 @@ window.editTransaction = (transactionId) => {
 };
 
 async function editTransactionAmount(transactionId, newAmount) {
+    if (getCurrentPage() !== 'dashboard.html') return;
+    
     const res = await fetch(`http://127.0.0.1:3000/api/transactions/${transactionId}`, {
         method: 'PUT',
         headers: { 
@@ -503,24 +560,24 @@ async function editTransactionAmount(transactionId, newAmount) {
     }
 }
 
-// ============ BLOCKCHAIN FUNCTIONS ============
+// ============ BLOCKCHAIN FUNCTIONS (dashboard only) ============
 // Blockchain Add Form
 document.addEventListener('DOMContentLoaded', function() {
+    if (getCurrentPage() !== 'dashboard.html') return;
+    
     const blockchainAddForm = document.getElementById('blockchainAddForm');
     if (blockchainAddForm) {
         blockchainAddForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             
-            // Get items and split by comma if multiple
             const itemsInput = document.getElementById('blockchainItems').value;
-            // Support multiple items separated by comma or pipe
             const itemsArray = itemsInput.split(/[,\|]/).map(item => item.trim()).filter(item => item);
-            const itemsString = itemsArray.join('|'); // Store as pipe-separated
+            const itemsString = itemsArray.join('|');
             
             const data = {
                 debtorName: document.getElementById('blockchainDebtorName').value,
                 amount: document.getElementById('blockchainAmount').value,
-                items: itemsString // Now can be multiple items in one transaction
+                items: itemsString
             };
 
             try {
@@ -550,26 +607,18 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
-// View my blockchain debts - FIXED VERSION
+// View my blockchain debts
 window.viewMyBlockchainDebts = async function() {
-    console.log('🔍 Fetching blockchain debts...');
+    if (getCurrentPage() !== 'dashboard.html') return;
     
     try {
         const res = await fetch('http://127.0.0.1:3000/api/blockchain/my-utang', {
             headers: { 'Authorization': `Bearer ${token}` }
         });
 
-        console.log('📡 Response status:', res.status);
-        
-        if (!res.ok) {
-            const errorText = await res.text();
-            console.error('❌ Error response:', errorText);
-            throw new Error('Failed to fetch blockchain debts');
-        }
+        if (!res.ok) throw new Error('Failed to fetch blockchain debts');
 
         const debts = await res.json();
-        console.log('✅ Received debts:', debts);
-        
         const container = document.getElementById('blockchainDebts');
         
         if (!debts || debts.length === 0) {
@@ -578,7 +627,6 @@ window.viewMyBlockchainDebts = async function() {
         }
 
         container.innerHTML = debts.map(d => {
-            // Handle BigInt conversion properly
             const amount = typeof d.amount === 'bigint' ? Number(d.amount) : parseFloat(d.amount || 0);
             const id = d.id?.toString() || 'unknown';
             const itemsList = d.items ? d.items.split('|').map(i => i.trim()).join(', ') : d.items;
@@ -618,6 +666,7 @@ window.viewMyBlockchainDebts = async function() {
 
 // Mark blockchain debt as paid
 window.markBlockchainPaid = async function(utangId) {
+    if (getCurrentPage() !== 'dashboard.html') return;
     if (!confirm('Mark this blockchain debt as paid?')) return;
 
     try {
@@ -642,6 +691,8 @@ window.markBlockchainPaid = async function(utangId) {
 
 // Sync blockchain data
 window.syncBlockchain = async function() {
+    if (getCurrentPage() !== 'dashboard.html') return;
+    
     try {
         const res = await fetch('http://127.0.0.1:3000/api/blockchain/sync', {
             method: 'POST',
@@ -661,9 +712,10 @@ window.syncBlockchain = async function() {
     }
 };
 
-// ============ AI FUNCTIONS ============
-// Get AI trust score for a debtor
+// ============ AI FUNCTIONS (dashboard only) ============
 window.getAITrustScore = async function(debtorId) {
+    if (getCurrentPage() !== 'dashboard.html') return;
+    
     try {
         const res = await fetch(`http://127.0.0.1:3000/api/ai/trust-score/${debtorId}`, {
             headers: { 'Authorization': `Bearer ${token}` }
@@ -681,9 +733,14 @@ window.getAITrustScore = async function(debtorId) {
     }
 };
 
-// Recalculate all AI scores for store
 window.recalculateAIScores = async function() {
+    if (getCurrentPage() !== 'dashboard.html') return;
     if (!confirm('Recalculate AI trust scores for ALL debtors? This may take a moment.')) return;
+
+    const btn = event.target;
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Recalculating...';
+    btn.disabled = true;
 
     try {
         const res = await fetch('http://127.0.0.1:3000/api/ai/recalculate-store', {
@@ -694,13 +751,17 @@ window.recalculateAIScores = async function() {
         const data = await res.json();
         
         if (res.ok) {
-            alert(`✅ ${data.message}`);
+            const aiUsed = aiServiceStatus === 'python' ? 'Python AI' : 'Fallback AI';
+            alert(`✅ ${data.message}\n🤖 Using: ${aiUsed}`);
             loadDebtors();
         } else {
             alert('Error: ' + data.error);
         }
     } catch (error) {
         alert('Error: ' + error.message);
+    } finally {
+        btn.innerHTML = originalText;
+        btn.disabled = false;
     }
 };
 
@@ -717,6 +778,7 @@ window.onclick = (event) => {
 
 // ============ LOGOUT FUNCTIONS ============
 function confirmLogout() {
+    if (getCurrentPage() !== 'dashboard.html') return;
     document.getElementById('logoutModal').style.display = 'block';
 }
 
@@ -730,22 +792,24 @@ function logout() {
     });
 }
 
-// ============ SESSION CHECK ============
-setInterval(async () => {
-    try {
-        const res = await fetch('http://127.0.0.1:3000/api/auth/me', {
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-        
-        if (!res.ok && res.status === 401) {
-            alert('Session expired. Please login again.');
-            localStorage.clear();
-            window.location.href = 'login.html';
+// ============ SESSION CHECK (dashboard only) ============
+if (getCurrentPage() === 'dashboard.html') {
+    setInterval(async () => {
+        try {
+            const res = await fetch('http://127.0.0.1:3000/api/auth/me', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            
+            if (!res.ok && res.status === 401) {
+                alert('Session expired. Please login again.');
+                localStorage.clear();
+                window.location.href = 'login.html';
+            }
+        } catch (error) {
+            console.error('Session check error:', error);
         }
-    } catch (error) {
-        console.error('Session check error:', error);
-    }
-}, 30000);
+    }, 30000);
+}
 
 // ============ EXPOSE FUNCTIONS TO WINDOW ============
 window.showPage = showPage;

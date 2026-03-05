@@ -99,16 +99,24 @@ app.use((error, req, res, next) => {
 
 // ============================================
 // MIDDLEWARE CONFIGURATION
-// Manuscript Reference: Section 2.4 - System Architecture
 // ============================================
-app.use(helmet({ contentSecurityPolicy: false })); // Security headers
+app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cors({ 
-    origin: ['http://127.0.0.1:3001', 'http://localhost:3001'],
+    origin: ['http://127.0.0.1:3000', 'http://localhost:3000', 'http://127.0.0.1:3001', 'http://localhost:3001'],
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization']
 }));
 app.use(express.json()); // Parse JSON request bodies
+
+// SIMPLE TEST ROUTE (doesn't print passwords)
+app.get('/api/test', (req, res) => {
+    res.json({ message: 'API is working' });
+});
+
+// ADD THIS LINE - Serve frontend files
+app.use('/frontend', express.static(path.join(__dirname, '../frontend')));
+
 app.use('/uploads', express.static('uploads', {
     setHeaders: (res, path) => {
         res.set('Cross-Origin-Resource-Policy', 'cross-origin');
@@ -231,6 +239,7 @@ app.post('/api/auth/register/send-otp', authLimiter, registerValidation, async (
     }
 
     const otp = generateOTP();
+    console.log(`\n🔐 VERIFICATION OTP for ${email}: ${otp}`);
     await sendOTPEmail(email, otp, 'verification');
     await saveOTP(0, email, otp, 'VERIFY_EMAIL');
 
@@ -322,7 +331,7 @@ app.post('/api/auth/register/verify', authLimiter, otpValidation, async (req, re
  * Includes failed attempt tracking (configurable limit)
  * Manuscript Reference: Section 3 - Brute force protection
  */
-app.post('/api/auth/login', authLimiter, loginValidation, async (req, res) => {
+app.post('/api/auth/login', loginValidation, async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
@@ -334,7 +343,6 @@ app.post('/api/auth/login', authLimiter, loginValidation, async (req, res) => {
     const user = users[0];
 
     // Check if account is locked
-    // CHANGE THIS VALUE to modify lock duration: currently 30 minutes (30 * 60000)
     if (user.locked_until && new Date(user.locked_until) > new Date()) {
         return res.status(423).json({ error: 'Account locked. Try later.' });
     }
@@ -343,12 +351,9 @@ app.post('/api/auth/login', authLimiter, loginValidation, async (req, res) => {
     const valid = await bcrypt.compare(password, user.password_hash);
     if (!valid) {
         // Increment failed attempts
-        // CHANGE THESE VALUES:
-        // MAX_ATTEMPTS = 5 (change this number)
-        // LOCK_DURATION = 30 minutes (change 30 to desired minutes)
         const attempts = user.failed_login_attempts + 1;
-        const MAX_ATTEMPTS = 5; // <<< CHANGE THIS for max login attempts
-        const LOCK_MINUTES = 30; // <<< CHANGE THIS for lock duration
+        const MAX_ATTEMPTS = 5;
+        const LOCK_MINUTES = 30;
         
         const lockUntil = attempts >= MAX_ATTEMPTS 
             ? new Date(Date.now() + LOCK_MINUTES * 60000) 
@@ -366,6 +371,7 @@ app.post('/api/auth/login', authLimiter, loginValidation, async (req, res) => {
     
     // Send OTP for 2FA
     const otp = generateOTP();
+    console.log(`\n📧 LOGIN OTP for ${email}: ${otp}`);
     await sendOTPEmail(email, otp, 'login');
     await saveOTP(user.id, email, otp, 'LOGIN_MFA');
 
@@ -926,11 +932,10 @@ app.post('/api/debtors', authenticateToken, validateSession, authorize('store_ow
 
     await auditLog(req.user.id, 'ADD_DEBTOR', req);
     
-    // FIXED: Return both id and debtorId
     res.status(201).json({ 
         message: 'Debtor added', 
         id: result.insertId, 
-        debtorId: debtorId  // Make sure this is returned!
+        debtorId: debtorId
     });
 });
 

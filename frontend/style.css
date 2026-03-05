@@ -522,3 +522,10 @@ td {
     text-align: center;
     margin-top: 10px;
 }
+
+#auth-otp {
+    display: none;
+}
+#auth-otp[style*="display: flex"] {
+    display: flex !important;
+}
