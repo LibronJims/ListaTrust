@@ -1210,6 +1210,17 @@ app.get('/api/ai/trust-score/:debtorId', authenticateToken, validateSession, aut
     }
 });
 
+// Add this to server.js near other AI routes
+app.get('/api/ai/test-connection', authenticateToken, validateSession, async (req, res) => {
+    try {
+        const aiPythonService = require('./aiPythonService');
+        const result = await aiPythonService.testConnection();
+        res.json(result);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
 /**
  * POST /api/ai/update-score/:debtorId
  * Manually update trust score for a debtor

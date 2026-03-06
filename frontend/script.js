@@ -133,11 +133,11 @@ async function uploadProfilePhoto(input) {
     }
 }
 
-// ============ AI STATUS CHECK (dashboard only) ============
+// ============ AI STATUS CHECK ============
 async function checkAIServiceStatus() {
-    if (getCurrentPage() !== 'dashboard.html') return;
-    
     try {
+        console.log('🔍 Checking AI status from frontend...');
+        
         const res = await fetch('http://127.0.0.1:3000/api/ai/health', {
             headers: { 'Authorization': `Bearer ${token}` }
         });
@@ -145,10 +145,13 @@ async function checkAIServiceStatus() {
         if (!res.ok) throw new Error('Failed to check AI status');
         
         const data = await res.json();
+        console.log('📊 AI Health data:', data);
+        
         const statusBadge = document.getElementById('aiStatusBadge');
         const modelDisplay = document.getElementById('aiModelDisplay');
         
-        if (data.status === 'AI Service is running') {
+        // Check the actual status from the response
+        if (data.status === 'AI Service is running' || data.ai_service === 'online') {
             if (statusBadge) statusBadge.innerHTML = '<span style="color: green; font-weight: bold;">✅ Python AI Online</span>';
             if (modelDisplay) modelDisplay.innerHTML = 'AI Model: Random Forest Classifier (Python)';
             aiServiceStatus = 'python';

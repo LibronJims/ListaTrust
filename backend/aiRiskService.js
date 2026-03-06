@@ -123,28 +123,29 @@ class AiRiskService {
     /**
      * Get risk summary for dashboard
      */
-    async getStoreRiskSummary(storeId) {
-        const [stats] = await this.pool.execute(
-            `SELECT 
-                COUNT(*) as total_debtors,
-                SUM(CASE WHEN trust_level = 'HIGH' THEN 1 ELSE 0 END) as high_count,
-                SUM(CASE WHEN trust_level = 'MEDIUM' THEN 1 ELSE 0 END) as medium_count,
-                SUM(CASE WHEN trust_level = 'LOW' THEN 1 ELSE 0 END) as low_count,
-                AVG(trust_score) as average_score
-             FROM debtors 
-             WHERE store_id = ?`,
-            [storeId]
-        );
+async getStoreRiskSummary(storeId) {
+    const [stats] = await this.pool.execute(
+        `SELECT 
+            COUNT(*) as total_debtors,
+            SUM(CASE WHEN trust_level = 'HIGH' THEN 1 ELSE 0 END) as high_count,
+            SUM(CASE WHEN trust_level = 'MEDIUM' THEN 1 ELSE 0 END) as medium_count,
+            SUM(CASE WHEN trust_level = 'LOW' THEN 1 ELSE 0 END) as low_count,
+            AVG(trust_score) as average_score
+         FROM debtors 
+         WHERE store_id = ?`,
+        [storeId]
+    );
 
-        // Check AI service status
-        const aiHealth = await aiPythonService.healthCheck();
-        
-        return {
-            ...stats[0],
-            ai_service: aiHealth.status === 'AI Service is running' ? 'online' : 'offline',
-            ai_mode: await aiPythonService.getMode()
-        };
-    }
+    // Force a fresh health check
+    const aiHealth = await aiPythonService.healthCheck();
+    console.log('📊 AI Health Check Result:', aiHealth);
+    
+    return {
+        ...stats[0],
+        ai_service: aiHealth.status === 'AI Service is running' ? 'online' : 'offline',
+        ai_mode: await aiPythonService.getMode()
+    };
+}
 
     /**
      * Default score when debtor not found

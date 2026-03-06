@@ -1,23 +1,22 @@
 // backend/aiPythonService.js
-// Connects Node.js backend to Python AI microservice
-// Manuscript Reference: Section 2.5.1 - AI Core Feature
 
 const axios = require('axios');
 
 class AIPythonService {
     constructor() {
-        // Python AI service runs on port 5000
         this.aiServiceUrl = 'http://127.0.0.1:5000';
         this.fallbackMode = false;
+        this.lastCheck = null;
     }
 
     /**
      * Call Python AI model to predict trust score
-     * Uses Random Forest Classifier trained on RFM data
      */
     async predictTrustScore(debtorData) {
         try {
             console.log('🤖 Calling Python AI service...');
+            console.log('   URL:', `${this.aiServiceUrl}/predict`);
+            console.log('   Data:', debtorData);
             
             const response = await axios.post(`${this.aiServiceUrl}/predict`, {
                 total_borrowed: parseFloat(debtorData.total_borrowed) || 0,
@@ -25,9 +24,14 @@ class AIPythonService {
                 active_debts: parseInt(debtorData.active_debts) || 0,
                 completed_debts: parseInt(debtorData.completed_debts) || 0,
                 on_time_payments: parseInt(debtorData.on_time_payments) || 0
+            }, {
+                timeout: 5000 // 5 second timeout
             });
 
             console.log('✅ Python AI response:', response.data);
+
+            this.fallbackMode = false;
+            this.lastCheck = 'online';
 
             return {
                 score: this.mapTrustLevelToScore(response.data.trust_level),
@@ -40,14 +44,14 @@ class AIPythonService {
         } catch (error) {
             console.error('❌ Python AI service error:', error.message);
             this.fallbackMode = true;
+            this.lastCheck = 'offline';
             
-            // Fallback to rule-based if Python service fails
             return this.fallbackRuleBased(debtorData);
         }
     }
 
     /**
-     * Convert trust level to numeric score (0-100)
+     * Convert trust level to numeric score
      */
     mapTrustLevelToScore(level) {
         switch(level) {
@@ -59,8 +63,7 @@ class AIPythonService {
     }
 
     /**
-     * Fallback rule-based AI (same as your original)
-     * Used when Python service is unavailable
+     * Fallback rule-based AI
      */
     fallbackRuleBased(data) {
         console.log('⚠️ Using fallback rule-based AI');
@@ -68,7 +71,6 @@ class AIPythonService {
         let score = 50;
         let factors = [];
 
-        // Calculate on-time payment ratio
         if (data.completed_debts > 0) {
             const onTimeRatio = data.on_time_payments / data.completed_debts;
             
@@ -84,7 +86,6 @@ class AIPythonService {
             }
         }
 
-        // Active debt penalty
         if (data.active_debts > 3) {
             score -= 20;
             factors.push('Too many active debts');
@@ -93,7 +94,6 @@ class AIPythonService {
             factors.push('Multiple active debts');
         }
 
-        // Ensure score is within bounds
         score = Math.max(0, Math.min(100, score));
 
         return {
@@ -111,24 +111,62 @@ class AIPythonService {
      */
     async healthCheck() {
         try {
-            const response = await axios.get(`${this.aiServiceUrl}/health`);
-            this.fallbackMode = false;
-            return response.data;
+            console.log('🔍 Checking Python AI health...');
+            
+            const response = await axios.get(`${this.aiServiceUrl}/health`, {
+                timeout: 3000
+            });
+            
+            console.log('✅ Python AI health check response:', response.data);
+            
+            if (response.data.status === 'AI Service is running') {
+                this.fallbackMode = false;
+                this.lastCheck = 'online';
+                return { 
+                    status: 'AI Service is running', 
+                    model_loaded: true,
+                    timestamp: new Date().toISOString()
+                };
+            } else {
+                this.fallbackMode = true;
+                this.lastCheck = 'offline';
+                return { 
+                    status: 'offline', 
+                    message: 'Python AI service not responding',
+                    fallback: 'Using rule-based AI'
+                };
+            }
         } catch (error) {
+            console.error('❌ Python AI health check failed:', error.message);
             this.fallbackMode = true;
+            this.lastCheck = 'offline';
             return { 
                 status: 'offline', 
-                message: 'Python AI service not running',
+                message: error.message,
                 fallback: 'Using rule-based AI'
             };
         }
     }
 
     /**
-     * Get current mode (Python AI or Fallback)
+     * Get current mode
      */
     getMode() {
         return this.fallbackMode ? 'fallback' : 'python-ai';
+    }
+
+    /**
+     * Test direct connection
+     */
+    async testConnection() {
+        try {
+            const response = await axios.get(`${this.aiServiceUrl}/test`, {
+                timeout: 3000
+            });
+            return { success: true, data: response.data };
+        } catch (error) {
+            return { success: false, error: error.message };
+        }
     }
 }
 
